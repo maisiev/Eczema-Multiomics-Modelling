@@ -113,7 +113,7 @@ In the seurat object metadata (after this block runs), we will have nCount_RNA, 
 
 -   nFeature_RNA = total number of unique genes detected in each cell (low number (\<500-100) suggests the cell is dead or empty droplet)
 
-I used threshold of 10% for mitchondrial genes bc skin can have harsh dissociation of cells and this is more relaxed, so not to miss complex details.
+I used threshold of 5% for mitchondrial genes because this is the standard metric
 
 A17:
 
@@ -185,11 +185,13 @@ a18_filtered <- subset(a18, subset =
 
 a18_size_postfilt <- dim(a18_filtered)
 a18_size_postfilt 
-
+a18_filtered_scatter <- FeatureScatter(a18_filtered, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a18_filtered_scatter.png", plot = a18_filtered_scatter, width = 10, height = 6, dpi = 300)
 
 ```
 
 A21:
+
 ```{r}
 #### Calulate percentage of features with certain condition #####
 
@@ -202,9 +204,9 @@ a21_metadata <- VlnPlot(a21, features =c("nCount_RNA", "nFeature_RNA", "percent_
 ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a21_metadata.png", plot = a21_metadata, width = 10, height = 6, dpi = 300)
 
 a21_metadata_scatter <- FeatureScatter(a21, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a18_metadata_scatter.png", plot = a21_metadata_scatter, width = 10, height = 6, dpi = 300)
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a21_metadata_scatter.png", plot = a21_metadata_scatter, width = 10, height = 6, dpi = 300)
 
-#Check size of a18 before filtering 
+#Check size of a21 before filtering 
 a21_size_prefilt <- dim(a21)
 a21_size_prefilt
 
@@ -220,36 +222,344 @@ a21_filtered <- subset(a21, subset =
 
 a21_size_postfilt <- dim(a21_filtered)
 a21_size_postfilt 
-
+a21_filtered_scatter <- FeatureScatter(a21_filtered, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a21_filtered_scatter.png", plot = a21_filtered_scatter, width = 10, height = 6, dpi = 300)
 
 ```
 
-
-
-### Integration ————————————————————————————-
-
-Integration corrects for batch effects and technical differences like sequencing depth or processing day, instead of just merging data. It stops the data clustering by patient, but instead by cell type.
+A22:
 
 ```{r}
-# Create list of objects
-sample_list <- list(a17, a18, a21, a22, a37, a38)
+#### Calulate percentage of features with certain condition #####
 
-# Normalise each sample seperately 
-# This makes expression values comparable within each sample 
-# and identifies the most variable genes 
-sample_list <- lapply(sample_list, function(x) {
-  x <- NormalizeData(x)
-  x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
-  return(x)
-})
+# In the a22 seurat object, look for % of mitochondrial genes and store this info in the metadata of the a22 object 
+a22[['percent_mt']] <- PercentageFeatureSet(object = a22, pattern = "^MT-")
+a22@meta.data
 
-# Find anchor cells (pairs of cells that are biologically similar) across samples 
-# Uses CCA (canonical correlation analysis) to find shared variation 
-# Identifies mutual nearest neighbours between datasets and creates a map of which cells correspond across samples 
-features <- SelectIntegrationFeatures(object.list = sample_list)
-anchors <- FindIntegrationAnchors(object.list = sample_list, 
-                                  anchor.features = features)
+# Visualise the metadata columns 
+a22_metadata <- VlnPlot(a22, features =c("nCount_RNA", "nFeature_RNA", "percent_mt"), ncol = 3)
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a22_metadata.png", plot = a22_metadata, width = 10, height = 6, dpi = 300)
 
-# Integrate data 
-integrated_samples <- IntegrateData(anchorset = anchors)
+a22_metadata_scatter <- FeatureScatter(a22, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a22_metadata_scatter.png", plot = a22_metadata_scatter, width = 10, height = 6, dpi = 300)
+
+#Check size of a22 before filtering 
+a22_size_prefilt <- dim(a22)
+a22_size_prefilt
+
+# Filter out poor quality cells
+# Filtering out cells that have unique feature counts 
+# And filter out cells with high % of mitochondrial genes 
+a22_filtered <- subset(a22, subset = 
+              nFeature_RNA > 500 &      # Remove very low-quality cells
+              nFeature_RNA < 6000 &     # Remove potential doublets (upper outliers)
+              nCount_RNA > 1000 &       # Remove cells with very few counts
+              nCount_RNA < 50000 &      # Remove extreme count outliers
+              percent_mt < 5)           # Remove high mitochondrial % 
+
+a22_size_postfilt <- dim(a22_filtered)
+a22_size_postfilt 
+a22_filtered_scatter <- FeatureScatter(a22_filtered, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a22_filtered_scatter.png", plot = a22_filtered_scatter, width = 10, height = 6, dpi = 300)
+
 ```
+
+A37:
+
+```{r}
+#### Calulate percentage of features with certain condition #####
+
+# In the a37 seurat object, look for % of mitochondrial genes and store this info in the metadata of the a37 object 
+a37[['percent_mt']] <- PercentageFeatureSet(object = a37, pattern = "^MT-")
+a37@meta.data
+
+# Visualise the metadata columns 
+a37_metadata <- VlnPlot(a37, features =c("nCount_RNA", "nFeature_RNA", "percent_mt"), ncol = 3)
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a37_metadata.png", plot = a37_metadata, width = 10, height = 6, dpi = 300)
+
+a37_metadata_scatter <- FeatureScatter(a37, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a37_metadata_scatter.png", plot = a37_metadata_scatter, width = 10, height = 6, dpi = 300)
+
+#Check size of a37 before filtering 
+a37_size_prefilt <- dim(a37)
+a37_size_prefilt
+
+# Filter out poor quality cells
+# Filtering out cells that have unique feature counts 
+# And filter out cells with high % of mitochondrial genes 
+a37_filtered <- subset(a37, subset = 
+              nFeature_RNA > 500 &      # Remove very low-quality cells
+              nFeature_RNA < 6000 &     # Remove potential doublets (upper outliers)
+              nCount_RNA > 1000 &       # Remove cells with very few counts
+              nCount_RNA < 50000 &      # Remove extreme count outliers
+              percent_mt < 5)           # Remove high mitochondrial % 
+
+a37_size_postfilt <- dim(a37_filtered)
+a37_size_postfilt 
+a37_filtered_scatter <- FeatureScatter(a37_filtered, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a37_filtered_scatter.png", plot = a37_filtered_scatter, width = 10, height = 6, dpi = 300)
+
+```
+
+A38:
+
+```{r}
+#### Calulate percentage of features with certain condition #####
+
+# In the a38 seurat object, look for % of mitochondrial genes and store this info in the metadata of the a38 object 
+a38[['percent_mt']] <- PercentageFeatureSet(object = a38, pattern = "^MT-")
+a38@meta.data
+
+# Visualise the metadata columns 
+a38_metadata <- VlnPlot(a38, features =c("nCount_RNA", "nFeature_RNA", "percent_mt"), ncol = 3)
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a38_metadata.png", plot = a38_metadata, width = 10, height = 6, dpi = 300)
+
+a38_metadata_scatter <- FeatureScatter(a38, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a38_metadata_scatter.png", plot = a38_metadata_scatter, width = 10, height = 6, dpi = 300)
+
+#Check size of a38 before filtering 
+a38_size_prefilt <- dim(a38)
+a38_size_prefilt
+
+# Filter out poor quality cells
+# Filtering out cells that have unique feature counts 
+# And filter out cells with high % of mitochondrial genes 
+a38_filtered <- subset(a38, subset = 
+              nFeature_RNA > 500 &      # Remove very low-quality cells
+              nFeature_RNA < 6000 &     # Remove potential doublets (upper outliers)
+              nCount_RNA > 1000 &       # Remove cells with very few counts
+              nCount_RNA < 50000 &      # Remove extreme count outliers
+              percent_mt < 5)           # Remove high mitochondrial % 
+
+a38_size_postfilt <- dim(a38_filtered)
+a38_size_postfilt 
+a38_filtered_scatter <- FeatureScatter(a38_filtered, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a38_filtered_scatter.png", plot = a38_filtered_scatter, width = 10, height = 6, dpi = 300)
+
+```
+
+#### Normalise Data --------------------------------
+Global scaling normalisation method normalises the feature expression measurement for each cell by the total expression (multiples by scale factor 10,000 and log transforms the result)
+
+```{r}
+a17_norm_filt <- NormalizeData(a17_filtered)
+str(a17_norm_filt) # Normalised values are stored in $ data
+
+a18_norm_filt <- NormalizeData(a18_filtered)
+str(a18_norm_filt) 
+
+a21_norm_filt <- NormalizeData(a21_filtered)
+str(a21_norm_filt) 
+
+a22_norm_filt <- NormalizeData(a22_filtered)
+str(a22_norm_filt) 
+
+a37_norm_filt <- NormalizeData(a37_filtered)
+str(a37_norm_filt) 
+
+a38_norm_filt <- NormalizeData(a38_filtered)
+str(a38_norm_filt) 
+```
+
+#### Identifying Highly Variable Features ----------------------
+
+Calculate subset of features (genes) that have high cell-to-cell variation in the dataset (so high expression in some cells and low expression in others) 
+
+Highly variable genes can help highlight biological signals in sc datasets (the important data that helps you distinguish between subset of cells)
+
+Finding highly variable genes for each sample and plotting them 
+
+``` {r}
+#sample a17
+a17_norm_filt <- FindVariableFeatures(a17_norm_filt, selection.method = 'vst', nFeatures = 2000)
+
+# Top 10 highly variable genes
+a17_top10 <- head(VariableFeatures(a17_norm_filt), 10)
+a17_top10_plot <- LabelPoints(plot = VariableFeaturePlot(a17_norm_filt), points = a17_top10, repel = TRUE) + ggtitle("Top 10 Variable Genes - A17")
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/a17_top10_genes.png", plot = a17_top10_plot, width = 10, height = 6, dpi = 300)
+
+#sample a18
+a18_norm_filt <- FindVariableFeatures(a18_norm_filt, selection.method = 'vst', nFeatures = 2000)
+
+# Top 10 highly variable genes
+a18_top10 <- head(VariableFeatures(a18_norm_filt), 10)
+a18_top10_plot <- LabelPoints(plot = VariableFeaturePlot(a18_norm_filt), points = a18_top10, repel = TRUE) + ggtitle("Top 10 Variable Genes - A18")
+
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/a18_top10_genes.png", plot = a18_top10_plot, width = 10, height = 6, dpi = 300)
+
+#sample a21
+a21_norm_filt <- FindVariableFeatures(a21_norm_filt, selection.method = 'vst', nFeatures = 2000)
+
+# Top 10 highly variable genes
+a21_top10 <- head(VariableFeatures(a21_norm_filt), 10)
+a21_top10_plot <- LabelPoints(plot = VariableFeaturePlot(a21_norm_filt), points = a21_top10, repel = TRUE) + ggtitle("Top 10 Variable Genes - A21")
+
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/a21_top10_genes.png", plot = a21_top10_plot, width = 10, height = 6, dpi = 300)
+
+#sample a22
+a22_norm_filt <- FindVariableFeatures(a22_norm_filt, selection.method = 'vst', nFeatures = 2000)
+
+# Top 10 highly variable genes
+a22_top10 <- head(VariableFeatures(a22_norm_filt), 10)
+a22_top10_plot <- LabelPoints(plot = VariableFeaturePlot(a22_norm_filt), points = a22_top10, repel = TRUE) + ggtitle("Top 10 Variable Genes - A22")
+
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/a22_top10_genes.png", plot = a22_top10_plot, width = 10, height = 6, dpi = 300)
+
+#sample a37
+a37_norm_filt <- FindVariableFeatures(a37_norm_filt, selection.method = 'vst', nFeatures = 2000)
+
+# Top 10 highly variable genes
+a37_top10 <- head(VariableFeatures(a37_norm_filt), 10)
+a37_top10_plot <- LabelPoints(plot = VariableFeaturePlot(a37_norm_filt), points = a37_top10, repel = TRUE) + ggtitle("Top 10 Variable Genes - A37")
+
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/a37_top10_genes.png", plot = a37_top10_plot, width = 10, height = 6, dpi = 300)
+
+#sample a38
+a38_norm_filt <- FindVariableFeatures(a38_norm_filt, selection.method = 'vst', nFeatures = 2000)
+
+# Top 10 highly variable genes
+a38_top10 <- head(VariableFeatures(a38_norm_filt), 10)
+a38_top10_plot <- LabelPoints(plot = VariableFeaturePlot(a38_norm_filt), points = a38_top10, repel = TRUE) + ggtitle("Top 10 Variable Genes - A38")
+
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/a38_top10_genes.png", plot = a38_top10_plot, width = 10, height = 6, dpi = 300)
+
+```
+
+Comparing top 10 highly variable genes across samples
+Creates:
+    - CSV comparison table of which genes appear in which samples
+    - Heatmap visualises this comparison
+    - UpSet plot = similar to venn diagram but better for this amount (6) of samples 
+
+Firstly for all HVGs...
+``` {r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Create a named list of HVGs per sample
+hvg_list <- list(
+  A17 = VariableFeatures(a17_norm_filt),
+  A18 = VariableFeatures(a18_norm_filt),
+  A21 = VariableFeatures(a21_norm_filt),
+  A22 = VariableFeatures(a22_norm_filt),
+  A37 = VariableFeatures(a37_norm_filt),
+  A38 = VariableFeatures(a38_norm_filt)
+)
+
+# Summary table 
+# Shows which genes appear in which samples (1 = present, 0 = absent)
+all_genes <- unique(unlist(hvg_list))
+
+presence_table <- data.frame(
+  Gene = all_genes,
+  sapply(hvg_list, function(x) as.integer(all_genes %in% x))
+)
+
+# Add a column counting how many samples each gene appears in
+presence_table$N_Samples <- rowSums(presence_table[, -1])
+presence_table <- presence_table[order(-presence_table$N_Samples), ]
+
+print(presence_table)
+write.csv(presence_table, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/HVG_comparison_table.csv", row.names = FALSE)
+
+# Heatmap of presence/absence of HVGs present in 2 or more samples
+presence_table_filtered <- presence_table[presence_table$N_Samples >= 2, ]
+
+# Converts data from wide format (one column per sample) to long format (one row per gene-sample combination)
+presence_long <- presence_table_filtered %>%
+  select(-N_Samples) %>%
+  pivot_longer(cols = -Gene, names_to = "Sample", values_to = "Present")
+
+heatmap_plot <- ggplot(presence_long, aes(x = Sample, y = Gene, fill = factor(Present))) +
+  geom_tile(color = "white") +
+  scale_fill_manual(values = c("0" = "lightgrey", "1" = "steelblue"),
+                    labels = c("Absent", "Present"),
+                    name = "") +
+  ggtitle("Highly Variable Gene Overlap Across Samples") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/HVG_heatmap.png", 
+       plot = heatmap_plot, width = 8, height = 10, dpi = 300)
+
+#  UpSet plot (shows combinations of overlap) 
+#install.packages("UpSetR")
+library(UpSetR)
+
+upset_data <- as.data.frame(sapply(top10_list, function(x) as.integer(all_genes %in% x)))
+rownames(upset_data) <- all_genes
+
+png("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/HVG_upset.png",
+    width = 10, height = 6, units = "in", res = 300)
+upset(upset_data, sets = names(top10_list), order.by = "freq", main.bar.color = "steelblue")
+dev.off()
+```
+
+Then for just top 10 HVGs in each sample...
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Create a named list of top 10 HVGs per sample
+top10_list <- list(
+  A17 = a17_top10,
+  A18 = a18_top10,
+  A21 = a21_top10,
+  A22 = a22_top10,
+  A37 = a37_top10,
+  A38 = a38_top10
+)
+
+# --- 1. Summary table ---
+# Shows which genes appear in which samples (1 = present, 0 = absent)
+top10all_genes <- unique(unlist(top10_list))
+
+top10presence_table <- data.frame(
+  Gene = top10all_genes,
+  sapply(top10_list, function(x) as.integer(top10all_genes %in% x))
+)
+
+# Add a column counting how many samples each gene appears in
+top10presence_table$N_Samples <- rowSums(top10presence_table[, -1])
+top10presence_table <- top10presence_table[order(-top10presence_table$N_Samples), ]
+
+print(top10presence_table)
+write.csv(top10presence_table, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/Top10HVG_comparison_table.csv", row.names = FALSE)
+
+#  Heatmap of presence/absence ---
+top10presence_long <- top10presence_table %>%
+  select(-N_Samples) %>%
+  pivot_longer(-Gene, names_to = "Sample", values_to = "Present")
+
+top10heatmap_plot <- ggplot(top10presence_long, aes(x = Sample, y = Gene, fill = factor(Present))) +
+  geom_tile(color = "white") +
+  scale_fill_manual(values = c("0" = "lightgrey", "1" = "steelblue"),
+                    labels = c("Absent", "Present"),
+                    name = "") +
+  ggtitle("Top 10 HVG Overlap Across Samples") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/Top10HVG_heatmap.png", 
+       plot = top10heatmap_plot, width = 8, height = 10, dpi = 300)
+
+# --- 3. UpSet plot (shows combinations of overlap) ---
+library(UpSetR)
+
+top10upset_data <- as.data.frame(sapply(top10_list, function(x) as.integer(top10all_genes %in% x)))
+rownames(top10upset_data) <- top10all_genes
+
+png("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/Top10HVG_upset.png",
+    width = 10, height = 6, units = "in", res = 300)
+upset(top10upset_data, sets = names(top10_list), order.by = "freq", main.bar.color = "steelblue")
+dev.off()
+```
+
