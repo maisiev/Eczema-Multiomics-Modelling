@@ -105,7 +105,7 @@ slotNames(a17@meta.data)
 
 # Quality Control ————————————————————————————-
 
-## Basic filtering 
+## Basic filtering
 
 Remove cells with very low or very high gene/total molecule count because these indicate low quality or empty cells and doublets or multiplets. Also remove cells with high percentage (higher than 5-10%) of mitochondrial genes (these indicate low quality/dying cells).
 
@@ -141,9 +141,10 @@ a17_size_prefilt <- dim(a17)
 # And filter out cells with high % of mitochondrial genes 
 a17_filtered <- subset(a17, subset = 
               nFeature_RNA > 500 &      # Remove very low-quality cells
-              nFeature_RNA < 6000 &     # Remove potential doublets (upper outliers)
+              nFeature_RNA < 6000 &     # Remove upper outliers
+                
               nCount_RNA > 1000 &       # Remove cells with very few counts
-              nCount_RNA < 50000 &      # Remove extreme count outliers
+              nCount_RNA < 50000 &      # Remove extreme count outliers (doublets etc)
               percent_mt < 5)           # Remove high mitochondrial % 
 
 a17_size_postfilt <- dim(a17_filtered)
@@ -341,10 +342,10 @@ ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipe
 ```
 
 ## Normalise Data --------------------------------
+
 Global scaling normalisation method normalises the feature expression measurement for each cell by the total expression (multiples by scale factor 10,000 and log transforms the result)
 
 This log normalisation method divides each cell's gene counts by that cell's total counts, multiplies by 10,000 (to put cells on a common scale), then log transforms. This accounts for differences in sequencing depth between cells while keeping all the data.
-
 
 ```{r}
 a17_norm_filt <- NormalizeData(a17_filtered)
@@ -368,13 +369,13 @@ str(a38_norm_filt)
 
 ## Identifying Highly Variable Features ----------------------
 
-Calculate subset of features (genes) that have high cell-to-cell variation in the dataset (so high expression in some cells and low expression in others) 
+Calculate subset of features (genes) that have high cell-to-cell variation in the dataset (so high expression in some cells and low expression in others)
 
 Highly variable genes can help highlight biological signals in sc datasets (the important data that helps you distinguish between subset of cells)
 
-Finding highly variable genes for each sample and plotting them 
+Finding highly variable genes for each sample and plotting them
 
-``` {r}
+```{r}
 #sample a17
 a17_norm_filt <- FindVariableFeatures(a17_norm_filt, selection.method = 'vst', nFeatures = 2000)
 
@@ -436,14 +437,11 @@ ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipe
 
 ```
 
-Comparing top 10 highly variable genes across samples
-Creates:
-    - CSV comparison table of which genes appear in which samples
-    - Heatmap visualises this comparison
-    - UpSet plot = similar to venn diagram but better for this amount (6) of samples 
+Comparing all and top 10 highly variable genes across samples Creates: - CSV comparison table of which genes appear in which samples - Heatmap visualises this comparison - UpSet plot = similar to venn diagram but better for this amount (6) of samples
 
 Firstly for all HVGs...
-``` {r}
+
+```{r}
 library(ggplot2)
 library(dplyr)
 library(tidyr)
@@ -509,6 +507,7 @@ dev.off()
 ```
 
 Then for just top 10 HVGs in each sample...
+
 ```{r}
 library(ggplot2)
 library(dplyr)
@@ -571,11 +570,11 @@ dev.off()
 
 # Scaling ----------------------------
 
-Removes unwanted sources of variation like batch effects or biological variation (like cell cycle stage or mitochrondrial contamination. This ensures that the clusters are due to actual differences in gene expression and not other effects. 
+Removes unwanted sources of variation like batch effects or biological variation (like cell cycle stage or mitochrondrial contamination). This ensures that the clusters are due to actual differences in gene expression and not other effects.
 
-For each sample, taking the 2000 HVGs identified earlier and scaling them so each gene has a mean of 0 and variance of 1 across all cells - puts all genes on same scale so that the highly expressed genes dont dominate downstream steps (e.g.PCA)
+For each sample, taking the 2000 HVGs identified earlier and scaling them so each gene has a mean of 0 and variance of 1 across all cells - puts all genes on same scale so that the highly expressed genes don't dominate downstream steps (e.g.PCA)
 
-``` {r}
+```{r}
 a17_norm_filt <- ScaleData(a17_norm_filt, features = VariableFeatures(a17_norm_filt))
 View(a17_norm_filt@assays$RNA) # in here is counts for all genes and cells (dgCMatrix), the normalised data (dgCMatrix), and scale.data (scaled data for only the 2000 HVGs as dense matrix )
 
@@ -594,9 +593,11 @@ View(a37_norm_filt@assays$RNA)
 a38_norm_filt <- ScaleData(a38_norm_filt, features = VariableFeatures(a38_norm_filt))
 View(a38_norm_filt@assays$RNA)
 ```
+
 # Merge Samples -------------------
 
 Merging all six samples into one seurat object and reruning normalisation, HVG and scaling steps on merged object
+
 ```{r}
 # Merge all samples into one Seurat object
 merged_seurat <- merge(a17_norm_filt, 
@@ -614,35 +615,181 @@ merged_seurat <- ScaleData(merged_seurat, features = VariableFeatures(merged_seu
 ```
 
 # Dimensionality Reduction --------------------------
+
 Visualise the multidimensional dataset
 
 ## PCA -----------------
-PCA = summarising all gene expression data across many genes into principal components 
+
+PCA = summarising all gene expression data across many genes into principal components
+
+Genes with large loadings for the first PCS explain most of the variability in the dataset.
+
+-   positive loadings = genes are posiviely correlated with that PC
+
+-   negative loadings = genes are negetively correlated with that PC
+
+Cells are clustered based on their gene expression profile (the basis of differentiation), so different clusters usually represent different cell types.
+
 ```{r}
-# Run PCA
+# Run PCA #########
 merged_seurat <- RunPCA(merged_seurat, features = VariableFeatures(merged_seurat))
 
 # Visualise PCA - elbow plot helps decide how many PCs to use downstream
 elbow_plot <- ElbowPlot(merged_seurat, ndims = 50) + ggtitle("Level of Variance in Each Principal Component - Merged Samples")
 ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/elbow_plot.png",
        plot = elbow_plot, width = 8, height = 6, dpi = 300)
+elbow_plot
 
 # Visualise which genes drive each PC
 print(merged_seurat[["pca"]], dims = 1:5, nfeatures = 5)
+PC1_Heatmap <- DimHeatmap(merged_seurat, dims = 1, cells = 500, balanced = TRUE)
+PCA_DimPlot <- DimPlot(merged_seurat, reduction = "pca") + NoLegend()
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/PC1_Heatmap.png",
+       plot = PC1_Heatmap, width = 8, height = 6, dpi = 300)
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/PCA_DimPlot.png",
+       plot = PCA_DimPlot, width = 8, height = 6, dpi = 300)
 
 # Extract top genes for each PC and save
 pc_loadings <- as.data.frame(Loadings(merged_seurat, reduction = "pca"))
 pc_top_genes <- apply(pc_loadings, 2, function(x) names(sort(abs(x), decreasing = TRUE)[1:10]))
 write.csv(pc_top_genes, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/PC_top_genes.csv")
 
+# Clustering #######
+merged_seurat <- FindNeighbors(merged_seurat, dims = 1:15) # Used top 20 PCs, based on where elbow plot plataeus 
+merged_seurat <- FindClusters(merged_seurat, resolution = c(0.1, 0.3, 0.5, 0.7, 1)) # Trying different resolution parameters
+View(merged_seurat@meta.data)
+
+# View clusters
+# First, plotting the 0.1 resolution (find name in metadata)
+# Decide which resolution parameter makes the most sense
+DimPlot(merged_seurat, group.by = 'RNA_snn_res.0.1', label = TRUE)
+# Decided on 0.1
+#Set identity of clusters
+Idents(merged_seurat) <- 'RNA_snn_res.0.1'
+PCA_clusters <- DimPlot(merged_seurat, reduction = "pca", label = TRUE)
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/PCA_res.0.1.png",
+       plot = PCA_clusters, width = 8, height = 6, dpi = 300)
+
+merged_seurat <- FindClusters(merged_seurat, resolution = 0.2)
+DimPlot(merged_seurat, group.by = "RNA_snn_res.0.3", label = TRUE)
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/PCA_res.0.2.png",
+       plot = PCA_0.2, width = 8, height = 6, dpi = 300)
 ```
 
+## UMAP ——————————-
 
+Another dimensionality reduction method
 
+Non-linear
 
+```{r}
+merged_seurat <- RunUMAP(merged_seurat, dims = 1:15) # First 20 PCs
+UMAP <- DimPlot(merged_seurat, label = TRUE, reduction = 'umap')
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/UMAP_res.0.1.png",
+       plot = UMAP, width = 8, height = 6, dpi = 300)
+```
 
+# Finding Markers —————————————
 
+Find marker genes in each cluster to identify what the clusters are.
 
+Marker genes are highly and specifically expression in one cluster compared to others, used to identtify what cell type each cluster is.
 
+**avg_log2FC** - how highly expressed it is in that cluster vs others (higher = more specific)
 
+**p_val_adj** - adjusted p-value (want this \< 0.05)
 
+```{r}
+Idents(merged_seurat) <- "RNA_snn_res.0.1"
+merged_seurat <- JoinLayers(merged_seurat) # Join layers in object, needed for Seurat V5
+
+#Find marker genes
+markers <- FindAllMarkers(merged_seurat, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+
+#Top 5 markers
+top5_markers <- markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+
+# Save 
+write.csv(top5_markers, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/markers_top5.csv", row.names = FALSE)
+
+write.csv(markers, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/markers_all.csv", row.names = FALSE)
+
+# Identify top genes
+top5 <- markers %>% 
+  group_by(cluster) %>% 
+  top_n(n = 5, wt = avg_log2FC) %>%
+  arrange(cluster)
+
+print(top5[, c("cluster", "gene", "avg_log2FC")], n = 55)
+FeaturePlot(merged_seurat, features = c("MKI67", "PTPRC", "EPCAM", "COL1A1", "PECAM1", "KRT19"))
+
+# Annotate the clusters with the cell types
+new.cluster.ids <- c("Proliferating", "Keratinocytes", "Squamous Epithelial", 
+                     "Fibroblasts", "Epithelial", "T cells", 
+                     "Epithelial", "Basal Epithelial", "Macrophages", "Melanocytes")
+names(new.cluster.ids) <- levels(merged_seurat)
+merged_seurat <- RenameIdents(merged_seurat, new.cluster.ids)
+Annotated_Clusters <- DimPlot(merged_seurat, label = TRUE, repel = TRUE)
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Annotated_Clusters.png",
+       plot = Annotated_Clusters, width = 8, height = 6, dpi = 300)
+
+table(merged_seurat@meta.data$orig.ident)
+```
+
+## Finding the Most Highly Expressed Genes per Cluster —-
+
+The **log2FC** from the markers file is effect size measurement
+
+Plotting the effects size of the top genes in each cluster, taking into account the pct.1 (% of cells in that cluster expressing that gene)
+
+```{r}
+#arrange by cluster
+top5 <- top5 %>% arrange(cluster, desc(avg_log2FC))
+top5$gene <- factor(top5$gene, levels = unique(top5$gene))
+
+#plot with cell type names
+top5$cluster <- recode(top5$cluster,
+  "0" = "Proliferating",
+  "1" = "Keratinocytes",
+  "2" = "Squamous Epithelial",
+  "3" = "Fibroblasts",
+  "4" = "Epithelial",
+  "5" = "T cells",
+  "6" = "Epithelial",
+  "7" = "Basal Epithelial",
+  "8" = "Macrophages",
+  "9" = "Melanocytes"
+)
+# Bubble plot
+Effect_per_Cluster <- ggplot(top5, aes(x = cluster, y = gene, 
+                  size = pct.1, 
+                  color = avg_log2FC)) +
+  geom_point() +
+  scale_color_gradient(low = "lightblue", high = "darkblue") +
+  scale_size_continuous(range = c(1, 8)) +
+  labs(x = "Cluster", y = "Gene", 
+       color = "log2FC", size = "% cells expressing") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes//Effect_per_cell_type.png",
+       plot = Effect_per_Cluster, width = 8, height = 6, dpi = 300)
+
+library(pheatmap)
+
+avg_expr <- AverageExpression(merged_seurat, 
+                               features = top5_genes,
+                               return.seurat = FALSE)$RNA
+heatmap <- pheatmap(avg_expr, 
+         scale = "row",
+         color = colorRampPalette(c("#1E88E5", "white", "#D81B60"))(100),
+         angle_col = 45,
+         fontsize_row = 7)
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/cells_expression.png",
+       plot = heatmap, width = 8, height = 6, dpi = 300)
+
+```
