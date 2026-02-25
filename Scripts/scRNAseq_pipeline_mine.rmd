@@ -128,10 +128,10 @@ a17@meta.data
 
 # Visualise the metadata columns 
 a17_metadata <- VlnPlot(a17, features =c("nCount_RNA", "nFeature_RNA", "percent_mt"), ncol = 3)
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a17_metadata.png", plot = a17_metadata, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a17_metadata.png", plot = a17_metadata, width = 10, height = 6, dpi = 300)
 
 a17_metadata_scatter <- FeatureScatter(a17, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a17_metadata_scatter.png", plot = a17_metadata_scatter, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a17_metadata_scatter.png", plot = a17_metadata_scatter, width = 10, height = 6, dpi = 300)
 
 #Check size of a17 before filtering (19931  5932)
 a17_size_prefilt <- dim(a17)
@@ -150,7 +150,7 @@ a17_filtered <- subset(a17, subset =
 a17_size_postfilt <- dim(a17_filtered)
 a17_size_postfilt #19931  3561
 a17_filtered_scatter <- FeatureScatter(a17_filtered, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a17_filtered_scatter.png", plot = a17_filtered_scatter, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a17_filtered_scatter.png", plot = a17_filtered_scatter, width = 10, height = 6, dpi = 300)
 
 
 
@@ -167,10 +167,10 @@ a18@meta.data
 
 # Visualise the metadata columns 
 a18_metadata <- VlnPlot(a18, features =c("nCount_RNA", "nFeature_RNA", "percent_mt"), ncol = 3)
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a18_metadata.png", plot = a18_metadata, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a18_metadata.png", plot = a18_metadata, width = 10, height = 6, dpi = 300)
 
 a18_metadata_scatter <- FeatureScatter(a18, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a18_metadata_scatter.png", plot = a18_metadata_scatter, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a18_metadata_scatter.png", plot = a18_metadata_scatter, width = 10, height = 6, dpi = 300)
 
 #Check size of a18 before filtering 
 a18_size_prefilt <- dim(a18)
@@ -189,7 +189,7 @@ a18_filtered <- subset(a18, subset =
 a18_size_postfilt <- dim(a18_filtered)
 a18_size_postfilt 
 a18_filtered_scatter <- FeatureScatter(a18_filtered, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a18_filtered_scatter.png", plot = a18_filtered_scatter, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a18_filtered_scatter.png", plot = a18_filtered_scatter, width = 10, height = 6, dpi = 300)
 
 ```
 
@@ -204,10 +204,10 @@ a21@meta.data
 
 # Visualise the metadata columns 
 a21_metadata <- VlnPlot(a21, features =c("nCount_RNA", "nFeature_RNA", "percent_mt"), ncol = 3)
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a21_metadata.png", plot = a21_metadata, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a21_metadata.png", plot = a21_metadata, width = 10, height = 6, dpi = 300)
 
 a21_metadata_scatter <- FeatureScatter(a21, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a21_metadata_scatter.png", plot = a21_metadata_scatter, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a21_metadata_scatter.png", plot = a21_metadata_scatter, width = 10, height = 6, dpi = 300)
 
 #Check size of a21 before filtering 
 a21_size_prefilt <- dim(a21)
@@ -226,7 +226,7 @@ a21_filtered <- subset(a21, subset =
 a21_size_postfilt <- dim(a21_filtered)
 a21_size_postfilt 
 a21_filtered_scatter <- FeatureScatter(a21_filtered, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a21_filtered_scatter.png", plot = a21_filtered_scatter, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a21_filtered_scatter.png", plot = a21_filtered_scatter, width = 10, height = 6, dpi = 300)
 
 ```
 
@@ -241,10 +241,10 @@ a22@meta.data
 
 # Visualise the metadata columns 
 a22_metadata <- VlnPlot(a22, features =c("nCount_RNA", "nFeature_RNA", "percent_mt"), ncol = 3)
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a22_metadata.png", plot = a22_metadata, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a22_metadata.png", plot = a22_metadata, width = 10, height = 6, dpi = 300)
 
 a22_metadata_scatter <- FeatureScatter(a22, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a22_metadata_scatter.png", plot = a22_metadata_scatter, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a22_metadata_scatter.png", plot = a22_metadata_scatter, width = 10, height = 6, dpi = 300)
 
 #Check size of a22 before filtering 
 a22_size_prefilt <- dim(a22)
@@ -263,7 +263,7 @@ a22_filtered <- subset(a22, subset =
 a22_size_postfilt <- dim(a22_filtered)
 a22_size_postfilt 
 a22_filtered_scatter <- FeatureScatter(a22_filtered, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a22_filtered_scatter.png", plot = a22_filtered_scatter, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a22_filtered_scatter.png", plot = a22_filtered_scatter, width = 10, height = 6, dpi = 300)
 
 ```
 
@@ -278,10 +278,10 @@ a37@meta.data
 
 # Visualise the metadata columns 
 a37_metadata <- VlnPlot(a37, features =c("nCount_RNA", "nFeature_RNA", "percent_mt"), ncol = 3)
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a37_metadata.png", plot = a37_metadata, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a37_metadata.png", plot = a37_metadata, width = 10, height = 6, dpi = 300)
 
 a37_metadata_scatter <- FeatureScatter(a37, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a37_metadata_scatter.png", plot = a37_metadata_scatter, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a37_metadata_scatter.png", plot = a37_metadata_scatter, width = 10, height = 6, dpi = 300)
 
 #Check size of a37 before filtering 
 a37_size_prefilt <- dim(a37)
@@ -300,7 +300,7 @@ a37_filtered <- subset(a37, subset =
 a37_size_postfilt <- dim(a37_filtered)
 a37_size_postfilt 
 a37_filtered_scatter <- FeatureScatter(a37_filtered, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a37_filtered_scatter.png", plot = a37_filtered_scatter, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a37_filtered_scatter.png", plot = a37_filtered_scatter, width = 10, height = 6, dpi = 300)
 
 ```
 
@@ -315,10 +315,10 @@ a38@meta.data
 
 # Visualise the metadata columns 
 a38_metadata <- VlnPlot(a38, features =c("nCount_RNA", "nFeature_RNA", "percent_mt"), ncol = 3)
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a38_metadata.png", plot = a38_metadata, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a38_metadata.png", plot = a38_metadata, width = 10, height = 6, dpi = 300)
 
 a38_metadata_scatter <- FeatureScatter(a38, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a38_metadata_scatter.png", plot = a38_metadata_scatter, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a38_metadata_scatter.png", plot = a38_metadata_scatter, width = 10, height = 6, dpi = 300)
 
 #Check size of a38 before filtering 
 a38_size_prefilt <- dim(a38)
@@ -337,7 +337,7 @@ a38_filtered <- subset(a38, subset =
 a38_size_postfilt <- dim(a38_filtered)
 a38_size_postfilt 
 a38_filtered_scatter <- FeatureScatter(a38_filtered, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a38_filtered_scatter.png", plot = a38_filtered_scatter, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/a38_filtered_scatter.png", plot = a38_filtered_scatter, width = 10, height = 6, dpi = 300)
 
 ```
 
@@ -383,7 +383,7 @@ a17_norm_filt <- FindVariableFeatures(a17_norm_filt, selection.method = 'vst', n
 a17_top10 <- head(VariableFeatures(a17_norm_filt), 10)
 a17_top10_plot <- LabelPoints(plot = VariableFeaturePlot(a17_norm_filt), points = a17_top10, repel = TRUE) + ggtitle("Top 10 Variable Genes - A17")
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable_Genes/a17_top10_genes.png", plot = a17_top10_plot, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable_Genes/a17_top10_genes.png", plot = a17_top10_plot, width = 10, height = 6, dpi = 300)
 
 #sample a18
 a18_norm_filt <- FindVariableFeatures(a18_norm_filt, selection.method = 'vst', nFeatures = 2000)
@@ -393,7 +393,7 @@ a18_top10 <- head(VariableFeatures(a18_norm_filt), 10)
 a18_top10_plot <- LabelPoints(plot = VariableFeaturePlot(a18_norm_filt), points = a18_top10, repel = TRUE) + ggtitle("Top 10 Variable Genes - A18")
 
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable_Genes/a18_top10_genes.png", plot = a18_top10_plot, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable_Genes/a18_top10_genes.png", plot = a18_top10_plot, width = 10, height = 6, dpi = 300)
 
 #sample a21
 a21_norm_filt <- FindVariableFeatures(a21_norm_filt, selection.method = 'vst', nFeatures = 2000)
@@ -403,7 +403,7 @@ a21_top10 <- head(VariableFeatures(a21_norm_filt), 10)
 a21_top10_plot <- LabelPoints(plot = VariableFeaturePlot(a21_norm_filt), points = a21_top10, repel = TRUE) + ggtitle("Top 10 Variable Genes - A21")
 
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/a21_top10_genes.png", plot = a21_top10_plot, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/a21_top10_genes.png", plot = a21_top10_plot, width = 10, height = 6, dpi = 300)
 
 #sample a22
 a22_norm_filt <- FindVariableFeatures(a22_norm_filt, selection.method = 'vst', nFeatures = 2000)
@@ -413,7 +413,7 @@ a22_top10 <- head(VariableFeatures(a22_norm_filt), 10)
 a22_top10_plot <- LabelPoints(plot = VariableFeaturePlot(a22_norm_filt), points = a22_top10, repel = TRUE) + ggtitle("Top 10 Variable Genes - A22")
 
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable_Genes/a22_top10_genes.png", plot = a22_top10_plot, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable_Genes/a22_top10_genes.png", plot = a22_top10_plot, width = 10, height = 6, dpi = 300)
 
 #sample a37
 a37_norm_filt <- FindVariableFeatures(a37_norm_filt, selection.method = 'vst', nFeatures = 2000)
@@ -423,7 +423,7 @@ a37_top10 <- head(VariableFeatures(a37_norm_filt), 10)
 a37_top10_plot <- LabelPoints(plot = VariableFeaturePlot(a37_norm_filt), points = a37_top10, repel = TRUE) + ggtitle("Top 10 Variable Genes - A37")
 
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/a37_top10_genes.png", plot = a37_top10_plot, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/a37_top10_genes.png", plot = a37_top10_plot, width = 10, height = 6, dpi = 300)
 
 #sample a38
 a38_norm_filt <- FindVariableFeatures(a38_norm_filt, selection.method = 'vst', nFeatures = 2000)
@@ -433,7 +433,7 @@ a38_top10 <- head(VariableFeatures(a38_norm_filt), 10)
 a38_top10_plot <- LabelPoints(plot = VariableFeaturePlot(a38_norm_filt), points = a38_top10, repel = TRUE) + ggtitle("Top 10 Variable Genes - A38")
 
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/a38_top10_genes.png", plot = a38_top10_plot, width = 10, height = 6, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/a38_top10_genes.png", plot = a38_top10_plot, width = 10, height = 6, dpi = 300)
 
 ```
 
@@ -470,7 +470,7 @@ presence_table$N_Samples <- rowSums(presence_table[, -1])
 presence_table <- presence_table[order(-presence_table$N_Samples), ]
 
 print(presence_table)
-write.csv(presence_table, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/HVG_comparison_table.csv", row.names = FALSE)
+#write.csv(presence_table, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/HVG_comparison_table.csv", row.names = FALSE)
 
 # Heatmap of presence/absence of HVGs present in 2 or more samples
 presence_table_filtered <- presence_table[presence_table$N_Samples >= 2, ]
@@ -489,8 +489,8 @@ heatmap_plot <- ggplot(presence_long, aes(x = Sample, y = Gene, fill = factor(Pr
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/HVG_heatmap.png", 
-       plot = heatmap_plot, width = 8, height = 10, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/HVG_heatmap.png", 
+       #plot = heatmap_plot, width = 8, height = 10, dpi = 300)
 
 #  UpSet plot (shows combinations of overlap) 
 #install.packages("UpSetR")
@@ -500,9 +500,9 @@ upset_data <- as.data.frame(sapply(hvg_list, function(x) as.integer(all_genes %i
 rownames(upset_data) <- all_genes
 
 graphics.off()  # close all devices cleanly
-png("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/HVG_upset.png",
-    width = 10, height = 6, units = "in", res = 300)
-upset(upset_data, sets = names(hvg_list), order.by = "freq", main.bar.color = "steelblue")
+#png("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable Genes/HVG_upset.png",
+   # width = 10, height = 6, units = "in", res = 300)
+#upset(upset_data, sets = names(hvg_list), order.by = "freq", main.bar.color = "steelblue")
 dev.off()
 ```
 
@@ -537,7 +537,7 @@ top10presence_table$N_Samples <- rowSums(top10presence_table[, -1])
 top10presence_table <- top10presence_table[order(-top10presence_table$N_Samples), ]
 
 print(top10presence_table)
-write.csv(top10presence_table, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable_Genes/Top10HVG_comparison_table.csv", row.names = FALSE)
+#write.csv(top10presence_table, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable_Genes/Top10HVG_comparison_table.csv", row.names = FALSE)
 
 #  Heatmap of presence/absence ---
 top10presence_long <- top10presence_table %>%
@@ -553,8 +553,8 @@ top10heatmap_plot <- ggplot(top10presence_long, aes(x = Sample, y = Gene, fill =
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable_Genes/Top10HVG_heatmap.png", 
-       plot = top10heatmap_plot, width = 8, height = 10, dpi = 300)
+#ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable_Genes/Top10HVG_heatmap.png", 
+     #  plot = top10heatmap_plot, width = 8, height = 10, dpi = 300)
 
 # --- 3. UpSet plot (shows combinations of overlap) ---
 library(UpSetR)
@@ -562,9 +562,9 @@ library(UpSetR)
 top10upset_data <- as.data.frame(sapply(top10_list, function(x) as.integer(top10all_genes %in% x)))
 rownames(top10upset_data) <- top10all_genes
 
-png("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable_Genes/Top10HVG_upset.png",
-    width = 10, height = 6, units = "in", res = 300)
-upset(top10upset_data, sets = names(top10_list), order.by = "freq", main.bar.color = "steelblue")
+#png("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Variable_Genes/Top10HVG_upset.png",
+  #  width = 10, height = 6, units = "in", res = 300)
+#upset(top10upset_data, sets = names(top10_list), order.by = "freq", main.bar.color = "steelblue")
 dev.off()
 ```
 
@@ -594,117 +594,33 @@ a38_norm_filt <- ScaleData(a38_norm_filt, features = VariableFeatures(a38_norm_f
 View(a38_norm_filt@assays$RNA)
 ```
 
-# Integrating Samples -------------------
+# Merging Samples -------------------
 
 Integrate samples using canonical correlation analysis. This aligns shared biological structure across patients, while reducing batch/patient-driven clustering and preserving cell-type signal.
 
-Creates a batch-corrected expression matrix, that is then re-scaled
+**Harmony** - Takes the PCA embedding and iteratively adjusts it to remove batch effects while preserving biological variation. It's generally faster and more memory efficient than CCA.
 
 ```{r}
-set.seed(1)
-########### Subsampling
-# need to subsample becuase not enough space otherwise
-subsample_object <- function(obj, n = 5000){
-  n_use <- min(n, ncol(obj))
-  cells <- sample(colnames(obj), n_use)
-  subset(obj, cells = cells)
-}
+install.packages("harmony")
+library(harmony)
+```
 
-# Take subsample of each sample (3000-5000 cells), bc all cells is too much memory
-a17_sub <- subsample_object(a17_norm_filt, 5000)
-a18_sub <- subsample_object(a18_norm_filt, 5000)
-a21_sub <- subsample_object(a21_norm_filt, 5000)
-a22_sub <- subsample_object(a22_norm_filt, 5000)
-a37_sub <- subsample_object(a37_norm_filt, 5000)
-a38_sub <- subsample_object(a38_norm_filt, 5000)
-
-########### Integration
-# Integrate only the subsample
-object.list <- list(a17_sub, a18_sub, a21_sub,
-                    a22_sub, a37_sub, a38_sub)
-
-# Picks the most variable features across all samples in a batch-aware way
-features <- SelectIntegrationFeatures(object.list, nfeatures = 2000)
-
-anchors <- FindIntegrationAnchors(
-  object.list = object.list,
-  anchor.features = features,
-  dims = 1:15
+```{r}
+# Merge all samples into one object 
+all_merged <- merge(
+  x = a17_norm_filt,
+  y = list(a18_norm_filt, a21_norm_filt,
+           a22_norm_filt, a37_norm_filt, a38_norm_filt)
 )
 
-integrated_ref <- IntegrateData(
-  anchorset = anchors,
-  dims = 1:15
-)
-integrated_ref <- ScaleData(integrated_ref)
-integrated_ref <- RunPCA(integrated_ref, npcs = 30)
-Reductions(integrated_ref)
-
-# !!!!!!!!!!!!!! Free memory
-#rm(anchors, object.list, features)
-gc()
-
-
-############# Project Full Datasets Onto Reference
-# Project each full sample onto the reference PCA space 
-#  Transfers the integrated expression matrix from the reference onto the query cells - essentually imputing batch-corrected values for every cell
-
-project_sample <- function(reference, query){
-  transfer.anchors <- FindTransferAnchors(
-    reference = reference,
-    query = query,
-    dims = 1:15,
-    reference.reduction = "pca"
-  )
-  result <- MapQuery(
-    anchorset = transfer.anchors,
-    reference = reference,
-    query = query,
-    refdata = list(batch_corrected = GetAssayData(reference, assay = "integrated", layer = "data"))
-  )
-  DefaultAssay(result) <- "batch_corrected"
-  result
-}
-
-a17_integrated <- project_sample(integrated_ref, a17_norm_filt)
-a18_integrated <- project_sample(integrated_ref, a18_norm_filt)
-a21_integrated <- project_sample(integrated_ref, a21_norm_filt)
-a22_integrated <- project_sample(integrated_ref, a22_norm_filt)
-a37_integrated <- project_sample(integrated_ref, a37_norm_filt)
-a38_integrated <- project_sample(integrated_ref, a38_norm_filt)
-
-########### Merge and Scale
-# Merge All Projected Objects
-all_integrated <- Reduce(
-  function(x, y) merge(x, y),
-  list(
-    a17_integrated,
-    a18_integrated,
-    a21_integrated,
-    a22_integrated,
-    a37_integrated,
-    a38_integrated
-  )
-)
-
-# The batch-corrected expression matrix 
-DefaultAssay(all_integrated) <- "batch_corrected"
-genes_use <- rownames(all_integrated[["batch_corrected"]])
-
-# Scales the data, mean = 0 (centered), variance = 1 (scaled) 
-# Standardises the expression values across genes
-all_integrated <- ScaleData(all_integrated, features = genes_use)
-
-
-# !!!!!!!!! Free memory
-#rm(a17_integrated, a18_integrated,
-   a21_integrated, a22_integrated,
-   a37_integrated, a38_integrated)
-#rm(integrated_ref)
-
-
-gc()
-
+# Join layers, normalise, find variable features, scale
+DefaultAssay(all_merged) <- "RNA"
+all_merged <- JoinLayers(all_merged)
+all_merged <- NormalizeData(all_merged)
+all_merged <- FindVariableFeatures(all_merged, nfeatures = 2000)
+# Explicitly pass variable features to ScaleData
+var_features <- VariableFeatures(all_merged)
+all_merged <- ScaleData(all_merged, features = var_features)
 
 ```
 
@@ -725,54 +641,56 @@ Genes with large loadings for the first PCS explain most of the variability in t
 Cells are clustered based on their gene expression profile (the basis of differentiation), so different clusters usually represent different cell types.
 
 ```{r}
-# Run PCA ###############
-all_integrated <- RunPCA(all_integrated, npcs = 30, features = genes_use)
-
-# Check it worked
-Reductions(all_integrated)
+# Run PCA
+all_merged <- RunPCA(all_merged, npcs = 30, features = var_features)
 
 # Visualise PCA - elbow plot helps decide how many PCs to use downstream
-ElbowPlot(all_integrated, ndims = 30)
-elbow_plot <- ElbowPlot(all_integrated, ndims = 30) + ggtitle("Level of Variance in Each Principal Component - Integrated Samples")
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Integrated/elbow_plot.png",
+elbow_plot <- ElbowPlot(all_merged, ndims = 30) + ggtitle("Level of Variance in Each Principal Component - Merged Samples")
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/elbow_plot.png",
        plot = elbow_plot, width = 8, height = 6, dpi = 300)
-elbow_plot
 
 # Visualise which genes drive each PC
-print(all_integrated[["pca"]], dims = 1:5, nfeatures = 5)
-PC1_Heatmap <- DimHeatmap(all_integrated, dims = 1, cells = 500, balanced = TRUE)
-PCA_DimPlot <- DimPlot(all_integrated, reduction = "pca") + NoLegend()
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Integrated/PC1_Heatmap.png",
-       plot = PC1_Heatmap, width = 8, height = 6, dpi = 300)
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Integrated/PCA_DimPlot.png",
-       plot = PCA_DimPlot, width = 8, height = 6, dpi = 300)
+print(all_merged[["pca"]], dims = 1:5, nfeatures = 5)
 
 # Extract top genes for each PC and save
-pc_loadings <- as.data.frame(Loadings(all_integrated, reduction = "pca"))
+pc_loadings <- as.data.frame(Loadings(all_merged, reduction = "pca"))
 pc_top_genes <- apply(pc_loadings, 2, function(x) names(sort(abs(x), decreasing = TRUE)[1:10]))
-write.csv(pc_top_genes, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/PC_top_genes.csv")
+write.csv(pc_top_genes, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/PC_top_genes.csv")
 
-# Clustering #######
-all_integrated <- FindNeighbors(all_integrated, dims = 1:15) # Used top 15 PCs, based on where elbow plot plataeus 
-all_integrated <- FindClusters(all_integrated, resolution = c(0.1, 0.3, 0.5, 0.7, 1)) # Trying different resolution parameters
-View(all_integrated@meta.data)
 
-# View clusters
-# First, plotting the 0.1 resolution (find name in metadata)
-# Decide which resolution parameter makes the most sense
-DimPlot(all_integrated, group.by = 'batch_corrected_snn_res.0.1', label = TRUE)
+# Run Harmony to correct for batch effects
+# group.by.vars tells it which metadata column contains the batch info
+all_merged <- RunHarmony(all_merged, group.by.vars = "orig.ident")
 
-# Decided on 0.1
-# Set identity of clusters
-Idents(all_integrated) <- 'batch_corrected_snn_res.0.1'
-PCA_clusters <- DimPlot(all_integrated, reduction = "pca", label = TRUE)
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Integrated/PCA_res.0.1.png",
-       plot = PCA_clusters, width = 8, height = 6, dpi = 300)
+# Use Harmony embedding for downstream analysis instead of PCA
+all_merged <- FindNeighbors(all_merged, reduction = "harmony", dims = 1:15) # Used top 15 PCs, based on where elbow plot plataeus 
+all_merged <- FindClusters(all_merged, resolution = c(0.1, 0.2, 0.3, 0.5, 0.7, 1)) # Trying different resolution parameters
 
-all_integrated <- FindClusters(all_integrated, resolution = 0.2)
-PCA_0.2 <- DimPlot(all_integrated, group.by = "batch_corrected_snn_res.0.2", label = TRUE)
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Integrated/PCA_res.0.2.png",
-       plot = PCA_0.2, width = 8, height = 6, dpi = 300)
+
+# Uncorrected PCA loadings and dimplot
+PC1_Heatmap <- DimHeatmap(all_merged, dims = 1, cells = 500, balanced = TRUE)
+PCA_DimPlot <- DimPlot(all_merged, reduction = "pca") + NoLegend()
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/PC1_Heatmap.png",
+       plot = PC1_Heatmap, width = 8, height = 6, dpi = 300)
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/PCA_DimPlot.png",
+       plot = PCA_DimPlot, width = 8, height = 6, dpi = 300)
+
+# Harmony corrected embeddings
+Harmony_DimPlot <- DimPlot(all_merged, reduction = "harmony") + NoLegend()
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/Harmony_DimPlot.png",
+       plot = Harmony_DimPlot, width = 8, height = 6, dpi = 300)
+
+
+# View metadata
+View(all_merged@meta.data)
+
+# Check batch mixing to ensure clusters arent separated by batches
+Batch_mixing <- DimPlot(all_merged, reduction = "umap", group.by = "orig.ident")
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/Batch_Mixing.png",
+       plot = Batch_mixing, width = 8, height = 6, dpi = 300)
+
+
+
 ```
 
 ## UMAP ——————————-
@@ -782,10 +700,22 @@ Another dimensionality reduction method
 Non-linear
 
 ```{r}
-all_integrated <- RunUMAP(all_integrated, dims = 1:15)
-UMAP <- DimPlot(all_integrated, label = TRUE, reduction = 'umap')
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Integrated/UMAP_res.0.1.png",
-       plot = UMAP, width = 8, height = 6, dpi = 300)
+all_merged <- RunUMAP(all_merged, reduction = "harmony", dims = 1:15)
+
+# Plot resolutions to decide which to use
+UMAP_0.1 <- DimPlot(all_merged, group.by = 'RNA_snn_res.0.1', label = TRUE, reduction = "umap")
+UMAP_0.2 <- DimPlot(all_merged, group.by = 'RNA_snn_res.0.2', label = TRUE, reduction = "umap")
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/UMAP_res.0.1.png",
+       plot = UMAP_0.1, width = 8, height = 6, dpi = 300)
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/UMAP_res.0.2.png",
+       plot = UMAP_0.2, width = 8, height = 6, dpi = 300)
+
+# Set identity and plot on harmony embedding
+Idents(all_merged) <- 'RNA_snn_res.0.1'
+Harmony_clusters <- DimPlot(all_merged, reduction = "harmony", label = TRUE)
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/Harmony_res.0.1.png",
+       plot = Harmony_clusters, width = 8, height = 6, dpi = 300)
+
 ```
 
 # Finding Markers —————————————
@@ -799,63 +729,143 @@ Marker genes are highly and specifically expression in one cluster compared to o
 **p_val_adj** - adjusted p-value (want this \< 0.05)
 
 ```{r}
-Idents(all_integrated) <- "batch_corrected_snn_res.0.1"
-DefaultAssay(all_integrated) <- "RNA"
-all_integrated[["RNA"]] <- JoinLayers(all_integrated[["RNA"]])
+markers <- FindAllMarkers(
+  all_merged,
+  only.pos = TRUE,        # gives only positive markers (genes that are upregulated)
+  min.pct = 0.25,         # gene must be detected in at least 25% of cells in either the cluster being tested or the rest of the cells 
+  logfc.threshold = 0.25  # gene must have a minimum 0.25 log2 fold change difference between the cluster and all other cells
+)
 
-# Find marker genes
-markers <- FindAllMarkers(all_integrated, 
-                          only.pos = TRUE, # returns genes that are upregulated
-                          min.pct = 0.25, # gene must be detected in at least 25% of cells in either the cluster being tested or the rest of the cells 
-                          logfc.threshold = 0.25) # gene must have at least 0.25 log2 fold change difference between the cluster and all other cells
+head(markers)
 
-# Pulling out the top 5 marker genes for each cluster, ranked by fold change
-markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+# Filter by statistically significant genes (p_adj<0.05), (pct.1>0.25 = keeps genes expressed in at least 25% of cells in that cluster)
+markers_filtered <- markers %>%
+  filter(p_val_adj < 0.05, pct.1 > 0.25)
 
-# Saving top 5 markers
-top5_markers <- markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+# Top 10 genes with highest fold change per cluster 
+top_markers <- markers_filtered %>%
+  group_by(cluster) %>%
+  slice_max(avg_log2FC, n = 10)
 
 # Save
-dir.create("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/Integrated",
+dir.create("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/Harmony",
            recursive = TRUE, showWarnings = FALSE)
-write.csv(top5_markers, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/Integrated/markers_top5.csv", row.names = FALSE)
-write.csv(markers, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/Integrated/markers_all.csv", row.names = FALSE)
+write.csv(top_markers, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/Integrated/markers_top10.csv", row.names = FALSE)
 
-# Identify top genes
-top5 <- markers %>% 
-  group_by(cluster) %>% 
-  top_n(n = 5, wt = avg_log2FC) %>%
-  arrange(cluster)
-print(top5[, c("cluster", "gene", "avg_log2FC")], n = 55)
 
 
 #Plot these canonical cell type marker genes to help identify which clusters light up on my umap
-DefaultAssay(all_integrated) <- "RNA"
-FeaturePlot(all_integrated, features = c("MKI67", "PTPRC", "EPCAM", "COL1A1", "PECAM1", "KRT19"))
+# set assay
+DefaultAssay(all_merged) <- "RNA"
 
-# Plot top markers from my own data
-FeaturePlot(all_integrated, features = c("KRT6A", "GZMA", "TYR", "C1QA", "PLK1", "MGP"))
 
-cluster_vln <- VlnPlot(all_integrated, 
-        features = c("KRT6A", "GZMA", "TYR", "C1QA", "PLK1", "MGP"),
-        pt.size = 0)
+# Canonical marker genes (reference biology)
+canonical_markers <- c("MKI67", "PTPRC", "EPCAM",
+                       "COL1A1", "PECAM1", "KRT19")
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/Integrated/cluster_vln.png",
-       plot = cluster_vln, width = 8, height = 6, dpi = 300)
+FeaturePlot(all_merged,
+            features = canonical_markers)
 
-# Annotate the clusters with the cell types
-new.cluster.ids <- c("Fibroblasts", "Keratinocytes", "Keratinocytes",
-                     "Proliferating", "T cells", "Basal Epithelial",
-                     "Squamous Epithelial", "Macrophages", "Melanocytes",
-                     "Fibroblasts", "Lymphocytes")
-names(new.cluster.ids) <- levels(all_integrated)
-all_integrated <- RenameIdents(all_integrated, new.cluster.ids)
+# Save canonical marker plot
+canonical_plot <- FeaturePlot(all_merged,
+                              features = canonical_markers)
 
-Annotated_Clusters <- DimPlot(all_integrated, label = TRUE, repel = TRUE)
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Integrated/Annotated_Clusters.png",
-       plot = Annotated_Clusters, width = 8, height = 6, dpi = 300)
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/Harmony/canonical_markers.png",
+       plot = canonical_plot,
+       width = 8,
+       height = 6,
+       dpi = 300)
 
-table(all_integrated@meta.data$orig.ident)
+FeaturePlot(all_merged, features = c("MKI67", "PTPRC", "EPCAM", "COL1A1", "PECAM1", "KRT19"))
+
+# Top markers from your dataset
+# -----------------------------------------
+top_marker_genes <- c("KRT6A", "GZMA", "TYR",
+                 "C1QA", "PLK1", "MGP")
+
+dataset_markers <- FeaturePlot(all_merged,
+            features = top_markers)
+
+cluster_vln <- VlnPlot(all_merged,
+                      features = top_markers,
+                      pt.size = 0)
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/Harmony/dataset_markers.png",
+       plot = dataset_markers,
+       width = 8,
+       height = 6,
+       dpi = 300)
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/Harmony/cluster_vln.png",
+       plot = cluster_vln,
+       width = 8,
+       height = 6,
+       dpi = 300)
+
+```
+
+## Annotating Clusters Using SingleR
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("SingleR")
+BiocManager::install("celldex") # Reference datasets
+```
+
+```{r}
+library(SingleR)
+library(celldex)
+
+# skin reference
+ref <- BlueprintEncodeData()
+
+# Expression matrix
+expr <- LayerData(all_merged, layer = "data") # normalised data
+
+# Cluster IDs
+clusters <- all_merged$seurat_clusters
+
+#Run SingleR at cluster level
+singler_cluster <- SingleR(
+  test = expr,
+  ref = ref,
+  labels = ref$label.main,
+  clusters = clusters
+)
+
+# Create mapping table
+cluster_map <- data.frame(
+  cluster = levels(as.factor(clusters)),
+  label = singler_cluster$labels
+)
+
+# Attach labels to each cell
+all_merged$SingleR_annotation <- 
+  cluster_map$label[
+    match(
+      as.character(all_merged$seurat_clusters),
+      cluster_map$cluster
+    )
+  ]
+
+# Check
+table(all_merged$SingleR_annotation, useNA = "ifany")
+
+# Visualise annotated clusters
+annotated_clusters <- DimPlot(all_merged,
+        group.by = "SingleR_annotation",
+        label = TRUE,
+        repel = TRUE,
+        pt.size = 0.3) +
+  ggtitle("SingleR Annotated Clusters")
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/Annotated_SingleR_UMAP.png",
+       plot = annotated_clusters,
+       width = 8,
+       height = 6,
+       dpi = 300)
 ```
 
 ## Finding the Most Highly Expressed Genes per Cluster —-
