@@ -875,100 +875,99 @@ The **log2FC** from the markers file is effect size measurement
 Plotting the effects size of the top genes in each cluster, taking into account the pct.1 (% of cells in that cluster expressing that gene)
 
 ```{r}
-# arrange by cluster
-top5 <- top5 %>% arrange(cluster, desc(avg_log2FC))
-top5$gene <- factor(top5$gene, levels = unique(top5$gene))
 
-# plot with cell type names matching your annotations
-top5$cluster <- recode(top5$cluster,
-  "0" = "Fibroblasts",
-  "1" = "Keratinocytes",
-  "2" = "Keratinocytes",
-  "3" = "Proliferating",
-  "4" = "T cells",
-  "5" = "Basal Epithelial",
-  "6" = "Squamous Epithelial",
-  "7" = "Macrophages",
-  "8" = "Melanocytes",
-  "9" = "Fibroblasts",
-  "10" = "Lymphocytes"
+# Check they match
+unique(markers$cluster)
+unique(cluster_annotation_map$seurat_clusters)
+
+cluster_annotation_map <- unique(
+  all_merged@meta.data[, c("seurat_clusters", "SingleR_annotation")]
 )
+cluster_annotation_map$seurat_clusters <- as.character(cluster_annotation_map$seurat_clusters)
+markers$cluster <- as.character(markers$cluster)
+
+# Top 5 genes per cluster
+top5 <- markers %>%
+  left_join(cluster_annotation_map, by = c("cluster" = "seurat_clusters")) %>%
+  group_by(SingleR_annotation) %>%
+  slice_max(avg_log2FC, n = 5)
 
 # Bubble plot
-Effect_per_Cluster <- ggplot(top5, aes(x = cluster, y = gene, 
-                  size = pct.1, 
-                  color = avg_log2FC)) +
+Effect_per_Cluster <- ggplot(top5,
+       aes(x = SingleR_annotation,
+           y = gene,
+           size = pct.1,
+           color = avg_log2FC)) +
   geom_point() +
   scale_color_gradient(low = "lightblue", high = "darkblue") +
   scale_size_continuous(range = c(1, 8)) +
-  labs(x = "Cluster", y = "Gene", 
-       color = "log2FC", size = "% cells expressing") +
+  labs(x = "Cell Type", y = "Gene", color = "log2FC", size = "% cells expressing") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 Effect_per_Cluster
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/Integrated/Effect_per_cell_type.png",
-       plot = Effect_per_Cluster, width = 8, height = 8, dpi = 300)
 
-# Heatmap
-library(pheatmap)
-top5_genes <- unique(top5$gene)
-avg_expr <- AverageExpression(all_integrated, 
-                               features = top5_genes,
-                               return.seurat = FALSE)$RNA
-# Convert sparse matrix to dense
-avg_expr_dense <- as.matrix(avg_expr)
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/Effect_per_cell_type.png",
+       plot = Effect_per_Cluster,
+       width = 8,
+       height = 8,
+       dpi = 300)
 
-library(ggplotify)
+top5_clusters <- markers %>%
+  left_join(cluster_annotation_map, by = c("cluster" = "seurat_clusters")) %>%
+  group_by(SingleR_annotation) %>%
+  slice_max(avg_log2FC, n = 5, with_ties = FALSE) %>%
+  arrange(SingleR_annotation, cluster)
 
-p <- as.ggplot(pheatmap(avg_expr_dense, 
-         scale = "row",
-         color = colorRampPalette(c("#1E88E5", "white", "#D81B60"))(100),
-         angle_col = 45,
-         fontsize_row = 10,
-         fontsize_col = 10,
-         show_rownames = TRUE,
-         show_colnames = TRUE))
+# Order genes by cluster so they appear grouped on y-axis
+top5_clusters$gene <- factor(top5$gene, levels = unique(top5$gene))
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/Integrated/cells_expression.png", plot = p, width = 10, height = 9, dpi = 300)
+Effect_per_Cluster_ordered <- ggplot(top5_clusters,
+       aes(x = SingleR_annotation,
+           y = gene,
+           size = pct.1,
+           color = avg_log2FC)) +
+  geom_point() +
+  scale_color_gradient(low = "lightblue", high = "darkblue") +
+  scale_size_continuous(range = c(1, 8)) +
+  labs(x = "Cell Type", y = "Gene", color = "log2FC", size = "% cells expressing") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+Effect_per_Cluster_ordered
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/Effect_per_cell_type_ordered.png",
+       plot = Effect_per_Cluster_ordered,
+       width = 8,
+       height = 8,
+       dpi = 300)
+```
 
-colnames(markers)
-# Create significance matrix for top5 genes
-sig_matrix <- matrix("", nrow = nrow(avg_expr_dense), ncol = ncol(avg_expr_dense))
-rownames(sig_matrix) <- rownames(avg_expr_dense)
-colnames(sig_matrix) <- colnames(avg_expr_dense)
+### Heatmap
 
-# Fill in significance stars
-for (gene in rownames(sig_matrix)) {
-  for (cluster in colnames(sig_matrix)) {
-    p <- markers %>% 
-      filter(gene == !!gene, cluster == !!cluster) %>% 
-      pull(p_val_adj)
-    if (length(p) > 0) {
-      sig_matrix[gene, cluster] <- case_when(
-        p < 0.001 ~ "***",
-        p < 0.01  ~ "**",
-        p < 0.05  ~ "*",
-        TRUE      ~ ""
-      )
-    }
-  }
-}
+```{r}
+# Get top 5 genes per cluster (using cluster numbers, not cell type labels)
+top5_heatmap <- markers %>%
+  group_by(cluster) %>%
+  slice_max(avg_log2FC, n = 5, with_ties = FALSE)
 
-# Add to heatmap
-p <- as.ggplot(pheatmap(avg_expr_dense,
-         scale = "row",
-         color = colorRampPalette(c("#1E88E5", "white", "#D81B60"))(100),
-         angle_col = 45,
-         fontsize_row = 10,
-         fontsize_col = 10,
-         show_rownames = TRUE,
-         show_colnames = TRUE,
-         display_numbers = sig_matrix,
-         fontsize_number = 8))
+# Set identities to SingleR annotation for labelling
+Idents(all_merged) <- all_merged$SingleR_annotation
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/Integrated/cells_expression.png",
-       plot = p, width = 10, height = 9, dpi = 300)
+all_merged <- ScaleData(all_merged, features = top5_heatmap$gene)
 
+# Plot heatmap
+heatmap_plot <- DoHeatmap(
+  all_merged,
+  features = top5_heatmap$gene,
+  label = TRUE,
+  size = 3
+) + scale_fill_gradient2(low = "blue", mid = "white", high = "red")
+
+heatmap_plot
+
+ggsave("Marker_Genes/Harmony/Top_genes_heatmap.png",
+       plot = heatmap_plot,
+       width = 14,
+       height = 10,
+       dpi = 300)
 ```
