@@ -1,5 +1,9 @@
-*.DS_Store
+.DS_Store
 *.tsv
 *.png
 *.rds
-.DS_Store
+*.h5ad
+*.h5seurat
+.Rhistory
+.RData
+.Rproj.user
