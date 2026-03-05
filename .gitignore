@@ -2,3 +2,4 @@
 *.tsv
 *.png
 *.rds
+.DS_Store
