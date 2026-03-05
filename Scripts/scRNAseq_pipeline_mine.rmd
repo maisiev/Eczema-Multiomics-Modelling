@@ -7,8 +7,8 @@ date: "2026-02-13"
 Load Libraries
 
 ```{r}
-install.packages("tidyverse")
-install.packages("viridis")
+#install.packages("tidyverse")
+#install.packages("viridis")
 library(viridis)
 library(CellChat)
 library(tidyverse)
@@ -16,6 +16,8 @@ library(Seurat)
 library(ComplexHeatmap)
 library(patchwork)
 library(SingleR)
+library(circlize)
+library(ggplotify)
 ```
 
 Set Input Path
@@ -755,6 +757,8 @@ markers <- FindAllMarkers(
   logfc.threshold = 0.25 # gene must have a minimum 0.25 log2 fold change difference between the cluster and all other cells
 )
 
+saveRDS(markers, "/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/markers.rds")
+
 # Filter for significance and high expression
 markers_filtered <- markers %>%
   filter(p_val_adj < 0.05, pct.1 > 0.25)
@@ -868,6 +872,7 @@ Here is the new annotation using singleR through the HPC with the granular refer
 ```{r}
 # Load seurat object with SingleR labels 
 all_merged <- readRDS("~/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/SingleR_Annotations/query_annotated.rds")
+saveRDS(all_merged, "~/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/all_merged_annotated.rds")
 
 # -----------UMAP CLusters-----------
 # Check the labels
@@ -1015,26 +1020,34 @@ The **log2FC** from the markers file is effect size measurement
 Plotting the effects size of the top genes in each cluster, taking into account the pct.1 (% of cells in that cluster expressing that gene)
 
 ```{r}
+markers <- readRDS("~/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/SingleR_Annotations/Data/markers.rds")
+
+# Set resolution to 0.2 to match markers
+Idents(all_merged) <- "RNA_snn_res.0.2"
+
+# Recreate the map using res 0.2
+all_merged$seurat_clusters_res0.2 <- Idents(all_merged)
+
+cluster_annotation_map <- unique(
+  all_merged@meta.data[, c("seurat_clusters_res0.2", "SingleR.labels")]
+)
+cluster_annotation_map$seurat_clusters_res0.2 <- as.character(cluster_annotation_map$seurat_clusters_res0.2)
+markers$cluster <- as.character(markers$cluster)
 
 # Check they match
 unique(markers$cluster)
-unique(cluster_annotation_map$seurat_clusters)
 
-cluster_annotation_map <- unique(
-  all_merged@meta.data[, c("seurat_clusters", "SingleR_annotation")]
-)
-cluster_annotation_map$seurat_clusters <- as.character(cluster_annotation_map$seurat_clusters)
-markers$cluster <- as.character(markers$cluster)
+unique(cluster_annotation_map$seurat_clusters)
 
 # Top 5 genes per cluster
 top5 <- markers %>%
-  left_join(cluster_annotation_map, by = c("cluster" = "seurat_clusters")) %>%
-  group_by(SingleR_annotation) %>%
+  left_join(cluster_annotation_map, by = c("cluster" = "seurat_clusters_res0.2")) %>%
+  group_by(SingleR.labels) %>%
   slice_max(avg_log2FC, n = 5)
 
 # Bubble plot
 Effect_per_Cluster <- ggplot(top5,
-       aes(x = SingleR_annotation,
+       aes(x = SingleR.labels,
            y = gene,
            size = pct.1,
            color = avg_log2FC)) +
@@ -1047,23 +1060,23 @@ Effect_per_Cluster <- ggplot(top5,
 
 Effect_per_Cluster
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/Effect_per_cell_type.png",
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/SingleR/Effect_per_cell_type.png",
        plot = Effect_per_Cluster,
        width = 8,
        height = 8,
        dpi = 300)
 
 top5_clusters <- markers %>%
-  left_join(cluster_annotation_map, by = c("cluster" = "seurat_clusters")) %>%
-  group_by(SingleR_annotation) %>%
+  left_join(cluster_annotation_map, by = c("cluster" = "seurat_clusters_res0.2")) %>%
+  group_by(SingleR.labels) %>%
   slice_max(avg_log2FC, n = 5, with_ties = FALSE) %>%
-  arrange(SingleR_annotation, cluster)
+  arrange(SingleR.labels, cluster)
 
 # Order genes by cluster so they appear grouped on y-axis
-top5_clusters$gene <- factor(top5$gene, levels = unique(top5$gene))
+top5_clusters$gene <- factor(top5_clusters$gene, levels = unique(top5_clusters$gene))
 
 Effect_per_Cluster_ordered <- ggplot(top5_clusters,
-       aes(x = SingleR_annotation,
+       aes(x = SingleR.labels,
            y = gene,
            size = pct.1,
            color = avg_log2FC)) +
@@ -1075,7 +1088,8 @@ Effect_per_Cluster_ordered <- ggplot(top5_clusters,
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 Effect_per_Cluster_ordered
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/PCA/Harmony/Effect_per_cell_type_ordered.png",
+
+ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/SingleR/Effect_per_cell_type_ordered.png",
        plot = Effect_per_Cluster_ordered,
        width = 8,
        height = 8,
@@ -1091,25 +1105,64 @@ top5_heatmap <- markers %>%
   slice_max(avg_log2FC, n = 5, with_ties = FALSE)
 
 # Set identities to SingleR annotation for labelling
-Idents(all_merged) <- all_merged$SingleR_annotation
-
+Idents(all_merged) <- all_merged$SingleR.labels
 all_merged <- ScaleData(all_merged, features = top5_heatmap$gene)
 
-# Plot heatmap
-heatmap_plot <- DoHeatmap(
-  all_merged,
-  features = top5_heatmap$gene,
-  label = TRUE,
-  size = 3
-) + scale_fill_gradient2(low = "blue", mid = "white", high = "red")
+mat <- GetAssayData(all_merged_sub, layer = "scale.data")[top5_heatmap$gene, ]
 
-heatmap_plot
+Heatmap_plot <- Heatmap(mat,
+        name = "Expression",
+        col = circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red")),
+        show_column_names = FALSE,
+        cluster_rows = FALSE,
+        cluster_columns = FALSE)
 
-ggsave("Marker_Genes/Harmony/Top_genes_heatmap.png",
-       plot = heatmap_plot,
-       width = 14,
-       height = 10,
-       dpi = 300)
+
+png("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/SingleR/Top_genes_heatmap.png",
+    width = 14, height = 10, units = "in", res = 300)
+draw(Heatmap_plot)
+dev.off()
+
+
+
+# Downsample more aggressively
+all_merged_sub <- subset(all_merged, downsample = 30)
+
+# Get scaled matrix
+mat <- GetAssayData(all_merged_sub, layer = "scale.data")[top5_heatmap$gene, ]
+
+# Cap extreme values for better colour range
+mat[mat > 2] <- 2
+mat[mat < -2] <- -2
+
+# Create column annotation with cell type labels
+cell_types <- all_merged_sub$SingleR.labels
+col_annotation <- HeatmapAnnotation(
+  CellType = cell_types,
+  show_legend = TRUE,
+  show_annotation_name = TRUE
+)
+
+
+Heatmap_plot2 <- Heatmap(
+  mat,
+  name = "Expression",
+  col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")),
+  show_column_names = FALSE,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE, 
+  column_split = cell_types,
+  top_annotation = col_annotation,
+  row_names_gp = gpar(fontsize = 8),
+  column_title_gp = gpar(fontsize = 7),
+  column_title_rot = 45,  
+  column_gap = unit(0.5, "mm")  
+)
+
+png("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/Marker_Genes/SingleR/top_genes_heatmap.png",
+    width = 16, height = 10, units = "in", res = 300)
+draw(Heatmap_plot2)
+dev.off()
 ```
 
 # Cellchat —————————
@@ -1131,15 +1184,13 @@ devtools::install_github('immunogenomics/presto')
 ```
 
 ```{r}
-library(presto)
-
-all_merged <- readRDS("all_merged_annotated.rds")
+all_merged <- readRDS("~/Desktop/Research_Project/RerunningPipelines/My_Pipeline/Data/all_merged_annotated.rds")
 
 # Step 1: Create CellChat object
 # Use normalised counts and SingleR annotations
 cellchat <- createCellChat(
   object = all_merged,
-  group.by = "SingleR_annotation",
+  group.by = "SingleR.labels",
   assay = "RNA"
 )
 
@@ -1154,15 +1205,58 @@ cellchat <- subsetData(cellchat)
 cellchat <- identifyOverExpressedGenes(cellchat)
 cellchat <- identifyOverExpressedInteractions(cellchat)
 
-# Step 5: Compute communication probabilities
-cellchat <- computeCommunProb(cellchat)
-cellchat <- filterCommunication(cellchat, min.cells = 10)
+# 1. Clean the factor levels inside the CellChat object
+# This removes empty levels and ensures the 'NAs' are handled
+cellchat@meta$SingleR.labels <- droplevels(as.factor(cellchat@meta$SingleR.labels))
 
-# Step 6: Infer communication at pathway level
-cellchat <- computeCommunProbPathway(cellchat)
+# 2. Re-sync the active identities to the cleaned metadata
+cellchat@idents <- cellchat@meta$SingleR.labels
 
-# Step 7: Aggregate communication network
-cellchat <- aggregateNet(cellchat)
+# 3. Final Verification check
+cat("Levels in object:", length(levels(cellchat@idents)), "\n")
+cat("Actual unique groups:", length(unique(cellchat@idents)), "\n")
+
+# 4. Run the calculation if they match
+# Using nboot = 20 saves time while you're still testing the pipeline
+if(length(levels(cellchat@idents)) == length(unique(cellchat@idents))) {
+  cellchat <- computeCommunProb(cellchat, type = "triMean", nboot = 20)
+  
+  # Step 5: Filter signaling at the pathway level
+  cellchat <- filterCommunication(cellchat, min.cells = 10)
+  
+  # Step 6: Compute the aggregated network
+  cellchat <- computeCommunProbPathway(cellchat)
+  cellchat <- aggregateNet(cellchat)
+  
+  print("Success! Calculation complete.")
+} else {
+  stop("The numbers still don't match. You might have NAs in your metadata.")
+}
+# 1. Identify what that 36th value actually is
+print(unique(cellchat@idents)) 
+
+# 2. Force convert everything to character, replace NAs with "Unknown", then refactor
+# This ensures that even the 'ghost' has a name and becomes a valid level
+labels_clean <- as.character(cellchat@meta$SingleR.labels)
+labels_clean[is.na(labels_clean)] <- "Unknown"
+labels_clean[labels_clean == ""] <- "Unknown"
+
+# 3. Put it back into the object
+cellchat@meta$SingleR.labels <- factor(labels_clean)
+cellchat@idents <- cellchat@meta$SingleR.labels
+
+# 4. Verification - These MUST match now
+cat("Levels:", length(levels(cellchat@idents)), "\n")
+cat("Unique:", length(unique(cellchat@idents)), "\n")
+
+# 5. Now run the calculation block again
+if(length(levels(cellchat@idents)) == length(unique(cellchat@idents))) {
+  cellchat <- computeCommunProb(cellchat, type = "triMean", nboot = 20)
+  cellchat <- filterCommunication(cellchat, min.cells = 10)
+  cellchat <- computeCommunProbPathway(cellchat)
+  cellchat <- aggregateNet(cellchat)
+  print("Success! Calculation complete.")
+}
 
 # Step 8: Visualise - circle plot
 groupSize <- as.numeric(table(cellchat@idents))
@@ -1182,11 +1276,11 @@ circle_weight <- as.ggplot(function()
                    label.edge = FALSE,
                    title.name = "Interaction strength"))
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/CellChat/Interaction_Number.png",
+ggsave("/Users/maisievarcoe/Desktop/Research_Project/RerunningPipelines/My_Pipeline/SingleR_Annotations/Interaction_Number.png",
        plot = circle_count,
        width = 8, height = 8, dpi = 300)
 
-ggsave("/Users/maisievarcoe/Desktop/Research Project/Rerunning Pipelines/My_Pipeline/CellChat/Interaction_Strength.png",
+ggsave("/Users/maisievarcoe/Desktop/Research_Project/RerunningPipelines/My_Pipeline/SingleR_Annotations/Interaction_Strength.png",
        plot = circle_weight,
        width = 8, height = 8, dpi = 300)
 
@@ -1197,9 +1291,6 @@ netVisual_bubble(cellchat,
                  remove.isolate = FALSE)
 
 # Heatmap of interactions
-install.packages("ggplotify")
-library(ggplotify)
-
 heatmap_count <- as.ggplot(function() 
   ComplexHeatmap::draw(netVisual_heatmap(cellchat, measure = "count")))
 

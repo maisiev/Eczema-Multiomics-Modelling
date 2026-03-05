@@ -4,6 +4,8 @@ output: html_document
 date: "2026-02-25"
 ---
 
+# Load Data
+
 ```{r}
 # Install if needed
 if (!requireNamespace("BiocManager", quietly = TRUE))
@@ -63,6 +65,8 @@ hist(metabolite_vars, main = "Metabolite Variance Distribution")
 
 ```
 
+# QC
+
 The metabolite columns are being treated as non-numeric because they have quotes embedded in the titles so R reads the values as characters instead of numbers. So i will remove the quotes from the titles of the metabolites.
 
 ```{r}
@@ -94,6 +98,8 @@ dim(metabolite_matrix)  # should be 32 x 38
 dim(sample_metadata)    # should be 32 x 84
 ```
 
+# Exploring Data
+
 Looking at S. aureus levels
 
 ```{r}
@@ -119,6 +125,8 @@ levels(sample_metadata$s_aureus_culture_growth_viapath)
 ```
 
 Looking at S. aureus association to different metabolites
+
+## Statistical Analysis - Spearman's Rank
 
 Using Spearman's rank: correlation -1 to +1
 
@@ -318,6 +326,8 @@ multi_df$s_aureus_p_adj <- p.adjust(multi_df$s_aureus_p, method = "BH")
 multi_df[multi_df$s_aureus_p_adj < 0.05, ] %>%
   arrange(s_aureus_p_adj)
 ```
+
+## Visualisations
 
 Update the visualisations based on the most significant metabolites when accounting for lesionality.
 
