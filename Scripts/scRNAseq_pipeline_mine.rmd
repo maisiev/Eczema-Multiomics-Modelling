@@ -1351,3 +1351,64 @@ head(Barcodes_35)
 
 # 
 ```
+
+# Exploring Stuff For Integration
+
+```{r}
+# Check your scRNA-seq sample names
+unique(all_merged$orig.ident)
+
+# Check seq_metadata_filt sample names
+head(seq_metadata_filt[, c("seq_sample_name", "seq_id", "eg_id")])
+
+load("~/Desktop/iawards/metadata/patient_metadata_201106.RData")
+load("~/Desktop/iawards/metadata/sample_metadata_201106.RData")
+load("~/Desktop/iawards/metadata/seq_metadata_filt.RData")
+
+# Check if scRNA-seq sample names match eg_id in sample_metadata
+unique(all_merged$orig.ident) %in% sample_metadata_201106$eg_id
+
+# Check what eg_ids are in sample metadata
+unique(sample_metadata_201106$eg_id)
+
+# Check seq_metadata_filt
+unique(seq_metadata_filt$eg_id)
+
+# Look at all columns in seq_metadata_filt
+head(seq_metadata_filt)
+head(sample_metadata_201106)
+
+# Check if A17, A18 appear anywhere in seq_metadata_filt
+grep("A17|A18|A21|A22|A37|A38", seq_metadata_filt$seq_sample_name)
+grep("A17|A18|A21|A22|A37|A38", seq_metadata_filt$seq_id)
+
+# Also check seq_meta_yi
+head(seq_meta_yi)
+grep("A17|A18|A21|A22|A37|A38", seq_meta_yi$seq_sample_name)
+grep("A17|A18|A21|A22|A37|A38", seq_meta_yi$seq_id)
+
+# Does patient metadata have A17 style IDs anywhere?
+grep("A17|A18|A21", patient_metadata_201106$eg_id)
+colnames(patient_metadata_201106)
+head(patient_metadata_201106$eg_id)
+# Look at the actual rows where A17, A18 etc appear in seq_id
+seq_metadata_filt[grep("A17|A18|A21|A22|A37|A38", seq_metadata_filt$seq_id), 
+                  c("seq_id", "seq_sample_name", "eg_id", "lesional")]4
+```
+
+```{r}
+# How many unique samples in the scRNA-seq object?
+length(unique(all_merged@meta.data$orig.ident))
+
+# What are they called?
+unique(all_merged@meta.data$orig.ident)
+
+# Do they have lesional or site information?
+colnames(all_merged@meta.data)
+table(all_merged@meta.data$lesional)
+```
+
+```{r}
+load("~/Desktop/iawards/single cell/abu/abu onedrive contents/Bioinformatics/scRNAseq/epi.int.RData")
+head(epi.int)
+```

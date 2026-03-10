@@ -297,7 +297,13 @@ head(lesional_df, 10)
 
 SA status and lesional status both linked to metabolite level?
 
-Test each metabolite with both lesional and sa status as predictors
+Test each metabolite with both lesional and sa status as predictors.
+
+lesional = covariate, SA = predictor, metabolite = outcome. Controlling for lesional status shows if SA affects metabolite levels independelty of lesionality levels.
+
+<https://www.nature.com/articles/s41598-019-48775-0#Sec8>
+
+linear regression with covariate adjustment
 
 ```{r}
 # Test each metabolite with both lesional and s_aureus as predictors
