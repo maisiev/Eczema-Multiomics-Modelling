@@ -22,6 +22,7 @@ library(phyloseq)
 library(vegan)
 library(tibble)
 library(MOFA2)
+library(ggrepel)
 ```
 
 ### Load Data
@@ -748,33 +749,117 @@ write.csv(easi_cors,
 Exploring the factors
 
 ```{r}
+plot_variance_explained(mofa_obj, max_r2 =10)
+
 # ------ Inspecting Feature Weights -----
 # Visualises distribution of feature weights for a given factor
-plot_weights(
+# Factor 3
+F3_species_plot <- plot_weights(
   mofa_obj, 
   view = "species", 
   factor = 3, 
-  nfeatures = 10, scale=TRUE
-)
-plot_weights(
+  nfeatures = 9, 
+  scale=TRUE,
+) + ggtitle("Species Feature Weights for Factor 3")
+
+F3_metab_plot <- plot_weights(
   mofa_obj, 
   view = "metabolites", 
   factor = 3, 
-  nfeatures = 10, scale=TRUE
-)
+  nfeatures = 10, 
+  scale=TRUE
+) + ggtitle("Metabolite Feature Weights for Factor 3")
 
+ggsave("~/Desktop/Research_Project/Scripts/Integration/metabolite_weights_F3.png",
+       plot = F3_metab_plot,
+       width = 8, height = 5, dpi = 300) 
+ggsave("~/Desktop/Research_Project/Scripts/Integration/species_weights_F3.png",
+       plot = F3_species_plot,
+       width = 9, height = 7, dpi = 300) 
+
+
+
+
+
+
+# Define which factors and views you want to look at
+target_factors <- 1:4
+target_views <- c("species", "metabolites")
+
+for (f in target_factors) {
+  for (v in target_views) {
+    
+    # 1. Create the Top Weights plot
+    p <- plot_top_weights(mofa_obj, 
+                          view = v, 
+                          factor = f, 
+                          nfeatures = 10, 
+                          scale = TRUE) + 
+      ggtitle(paste("Top 10", v, "Weights for Factor", f)) +
+      theme(axis.text.y = element_text(size = 10)) # Adjust font here
+    
+    # 2. Create a dynamic filename
+    file_name <- paste0("~/Desktop/Research_Project/Scripts/Integration/MOFA+/top_", v, "_weights_F", f, ".png")
+    
+    # 3. Save
+    ggsave(file_name, plot = p, width = 9, height = 6, dpi = 300)
+    
+    message(paste("Saved plot for Factor", f, "View", v))
+  }
+}
+
+
+# --- Top Weights ----------
 # Plots top n features with the highest absolute loading value
 # for a specific factor
 # Good for identifying the main drivers of a factor
-plot_top_weights(mofa_obj, 
+# high absolute loading value >0.8
+# Factor 3
+top_metab_F3 <- plot_top_weights(mofa_obj, 
   view = "metabolites", 
   factor = 3, 
   nfeatures = 10, scale=TRUE
-)
-plot_top_weights(mofa_obj, 
-  view = "metabolites", 
-  factor = 3, 
-  nfeatures = 10, scale=TRUE
-)
+) + ggtitle("Top 10 Metabolites with Highest Absolute Loading Value (Weight) for Factor 3 ")
 
+top_species_F3 <- plot_top_weights(mofa_obj, 
+  view = "species", 
+  factor = 3, 
+  nfeatures = 10, scale=TRUE
+) + ggtitle("Top 10 Species with Highest Absolute Loading Value (Weight) for Factor 3 ")
+
+# Factor 4
+top_metab_F4 <- plot_top_weights(mofa_obj, 
+  view = "metabolites", 
+  factor = 4, 
+  nfeatures = 10, scale=TRUE
+) + ggtitle("Top 10 Metabolites with Highest Absolute Loading Value (Weight) for Factor 4 ")
+
+top_species_F4 <- plot_top_weights(mofa_obj, 
+  view = "species", 
+  factor = 4, 
+  nfeatures = 10, scale=TRUE
+) + ggtitle("Top 10 Species with Highest Absolute Loading Value (Weight) for Factor 4 ")
+
+ggsave("~/Desktop/Research_Project/Scripts/Integration/top_metabolite_weights_F3.png",
+       plot = top_metab_F3,
+       width = 8, height = 5, dpi = 300) 
+
+ggsave("~/Desktop/Research_Project/Scripts/Integration/top_species_weights_F3.png",
+       plot = top_species_F3,
+       width = 9, height = 5, dpi = 300) 
+
+ggsave("~/Desktop/Research_Project/Scripts/Integration/top_metabolite_weights_F4.png",
+       plot = top_metab_F4,
+       width = 8, height = 5, dpi = 300) 
+
+ggsave("~/Desktop/Research_Project/Scripts/Integration/top_species_weights_F4.png",
+       plot = top_species_F4,
+       width = 9, height = 5, dpi = 300) 
+
+# Look at this further.........
+plot_factor(mofa_obj, 
+            factors = 1,
+            add_violin = TRUE,
+            dodge = TRUE) +
+  labs(title = "Distribution of Samples along Factor 1 (Amino Acids)")
 ```
