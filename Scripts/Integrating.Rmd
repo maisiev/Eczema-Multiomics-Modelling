@@ -936,9 +936,11 @@ print(sig_metabolites)
 
 ### 5.1. Also looking at Lesionality-Metabolite Correlation
 
+adjusting for SA abundance
+
 ```{r}
 
-#---------SA-Metabolite Linear Regression-------
+#---------Lesionality-Metabolite Linear Regression-------
 results <- list()
 
 for(metabolite in colnames(nmr_matched)) {
@@ -967,3 +969,66 @@ results_df$p_adjusted <- p.adjust(results_df$`Pr(>|t|)`, method = "fdr")
 sig_metabolites <- results_df[results_df$p_adjusted < 0.05, ]
 print(sig_metabolites)
 ```
+
+### 5.2. Also looked at TEWL-Metabolite Correlation
+
+Adjusting for lesion status
+
+```{r}
+#---------TEWL-Metabolite Linear Regression-------
+results <- list()
+master_table$TEWL_mean <- as.numeric(master_table$TEWL_mean)
+
+for(metabolite in colnames(nmr_matched)) {
+  
+  df <- data.frame(
+    metabolite = as.numeric(nmr_matched[, metabolite]),
+    sa_abundance = master_table$sa_abundance[
+      match(rownames(nmr_matched), master_table$NMR_sample_id)],
+    lesional = master_table$lesional[
+      match(rownames(nmr_matched), master_table$NMR_sample_id)],
+    TEWL_mean = master_table$TEWL_mean[          
+      match(rownames(nmr_matched), master_table$NMR_sample_id)]
+)
+  model <- lm(metabolite ~ TEWL_mean + lesional, data = df)
+  results[[metabolite]] <- summary(model)$coefficients["TEWL_mean", ]
+}
+
+# Combine results into a dataframe
+results_df <- do.call(rbind, results)
+results_df <- as.data.frame(results_df)
+results_df$metabolite <- rownames(results_df)
+
+# Apply BH (FDR) correction
+results_df$p_adjusted <- p.adjust(results_df$`Pr(>|t|)`, method = "fdr")
+
+# Filter for significance
+sig_metabolites <- results_df[results_df$p_adjusted < 0.05, ]
+print(sig_metabolites)
+
+```
+
+### Spearman Correlation
+
+```{r}
+
+# Run cor.test for each and extract rho and p-value
+spearman_results <- lapply(colnames(nmr_matched), function(metabolite) {
+  test <- cor.test(master_table$sa_matched, 
+                   nmr_matched[[metabolite]], 
+                   method = "spearman",
+                   use = "complete.obs")
+  data.frame(
+    variable = metabolite,
+    rho = round(test$estimate, 3),
+    p_value = round(test$p.value, 3)
+  ) 
+  sa_matched <- master_table$sa_abundance[
+  match(rownames(nmr_matched), master_table$NMR_sample_id)]
+}) %>% bind_rows
+rownames(spearman_results) <- NULL
+
+print(spearman_results)
+```
+
+## Step 6: 
