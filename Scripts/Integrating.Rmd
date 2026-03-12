@@ -23,6 +23,7 @@ library(vegan)
 library(tibble)
 library(MOFA2)
 library(ggrepel)
+library(pheatmap)
 ```
 
 ### Load Data
@@ -67,6 +68,21 @@ link <- sample_metadata_201106
 Using cleaned data files, extract S. aureus abundance from metaphlan.
 
 Build master linking table, connecting microbiome (SA abundance) to metabolomics via eg_id.
+
+### Data Cleaning
+
+Row 13 (P22757_129, GYECZ1193) was incorrectly assigned GYECZ1197.BACK.LES as its NMR ID. This means:
+
+-   **The duplicate**: BACK.LES appears twice- once correctly (row 22, the real GYECZ1197 sample) and once incorrectly (row 13, the mislinked GYECZ1193 sample)
+
+-   **The "missing" value**: there's no actual NMR data for GYECZ1193 BACK, so the row shouldn't exist at all
+
+Dropping row 13 solves both in one step 
+
+```{r}
+# Remove GYECZ1193 BACK - no NMR data available, incorrectly linked to GYECZ1197
+nmr_shotgun <- nmr_shotgun[nmr_shotgun$sample_number != "29", ]
+```
 
 ### 1.1. Extract SA Abundance from Microbiome Data
 
@@ -540,13 +556,15 @@ MOFA+ finds latent factors between data groups, allowing you to then correlate t
 ### 4.1. Prepare and Align Data
 
 ```{r}
+
 # Notes:
-# - GYECZ1193 BACK samples excluded - no NMR data available
+# - GYECZ1193 BACK excluded - no NMR data (corrected in nmr_shotgun at load time)
 # - GYECZ0776 and GYECZ1111 excluded - no microbiome data
 # - Final aligned dataset: 18 samples
 
 # ------- Prepare NMR metabolomics matrix --------------
 # Set sample IDs as row names and clean metabolite names
+# Remove zero variance species
 rownames(NMR_peakarea_metadata) <- NMR_peakarea_metadata$NMR_sample_id
 NMR_peakarea_metadata$NMR_sample_id <- NULL
 colnames(NMR_peakarea_metadata) <- gsub("'", "", colnames(NMR_peakarea_metadata))
@@ -559,21 +577,21 @@ rownames(species_matched) <- master_table$NMR_sample_id[
 ]
 
 # --- Align both matrices to shared samples ---
-# Keep only samples present in both matrices
-# Excludes GYECZ1193 BACK (no NMR data) and duplicate introduced
-# by incorrect linking of GYECZ1193.BACK to GYECZ1197 NMR IDs
 keep_samples <- rownames(species_matched)[
-  rownames(species_matched) %in% rownames(NMR_peakarea_metadata) &
-  !grepl("GYECZ1193.BACK", rownames(species_matched))
+  rownames(species_matched) %in% rownames(NMR_peakarea_metadata)
 ]
 
 species_matched <- species_matched[keep_samples, ]
+
+# Remove zero variance species after subsetting to final 18 samples
+species_matched <- species_matched[, apply(species_matched, 2, var) != 0]
+
 nmr_matched <- NMR_peakarea_metadata[keep_samples, ]
 
-# Sanity checks
-dim(species_matched)                                     # 18 x 45
-dim(nmr_matched)                                         # 18 x 122
-all(rownames(species_matched) == rownames(nmr_matched))  # TRUE
+# Verify
+dim(species_matched)                                    # should be 18 x 44
+dim(nmr_matched)                                        # should be 18 x 122
+all(rownames(species_matched) == rownames(nmr_matched)) # should be TRUE
 ```
 
 ### 4.2. MOFA+
@@ -651,8 +669,11 @@ mofa_obj <- run_mofa(mofa_obj, use_basilisk = TRUE)
 # Save the trained MOFA object as RDS
 saveRDS(mofa_obj, 
         file = "~/Desktop/Research_Project/Scripts/Integration/mofa_model.rds")
+```
 
+```{r}
 # ------- Visualisations -----------------
+#mofa_obj <- readRDS("~/Desktop/Research_Project/Scripts/Integration/mofa_model.rds")
 # Check the trained model
 print(mofa_obj)
 
@@ -662,22 +683,67 @@ p1 <- plot_variance_explained(mofa_obj)
 # Plot total variance explained
 p2 <- plot_variance_explained(mofa_obj, plot_total = TRUE)
 
+p1
+p2
 # Extract factor scores
 factors <- get_factors(mofa_obj)[[1]]
 dim(factors)  # should be 18 samples x 4 factors
 head(factors)
 
-# Save plots
-ggsave("~/Desktop/Research_Project/Scripts/Integration/mofa_variance_total.png",
-       plot = p2,
-       width = 6, height = 5, dpi = 300)
+#------ Heatmap of factor scores -----------
+# Basic heatmap with pheatmap
+factors_heatmap <- pheatmap(factors,
+         cluster_rows = TRUE,      # cluster patients
+         cluster_cols = FALSE,     # keep Factor1, Factor2... in order
+         scale = "column",         # scale each factor to mean=0, sd=1
+         color = colorRampPalette(c("blue", "white", "red"))(100),
+         main = "MOFA+ Factor Scores per Patient",
+         fontsize_row = 8,
+         fontsize_col = 10, bg="white")
 
-ggsave("~/Desktop/Research_Project/Scripts/Integration/mofa_variance_per_factor.png",
+
+# Build annotation from sample names
+sample_anno <- data.frame(
+  Status = ifelse(grepl("NONLES", rownames(factors)), "NONLES", "LES"),
+  row.names = rownames(factors)
+)
+
+# Define annotation colours
+anno_colours <- list(
+  Status = c(LES = "#E41A1C", NONLES = "#377EB8")
+)
+
+png("~/Desktop/Research_Project/Scripts/Integration/MOFA+/mofa_heatmap.png", width = 900, height = 700, bg = "white")
+
+pheatmap(factors,
+         annotation_row = sample_anno,
+         annotation_colors = anno_colours,
+         cluster_rows = TRUE,
+         cluster_cols = FALSE,
+         scale = "column",
+         color = colorRampPalette(c("#2166AC", "white", "#D6604D"))(100),
+         main = "MOFA+ Factor Scores per Patient",
+         fontsize = 16,
+         fontsize_row = 12,
+         fontsize_col = 16,
+         cellwidth=80, bg="white")       
+
+dev.off()
+# -----------Save plots----------
+ggsave("~/Desktop/Research_Project/Scripts/Integration/MOFA+/mofa_variance_total.png",
+       plot = p2,
+       width = 6, height = 5, dpi = 300, bg="white")
+
+ggsave("~/Desktop/Research_Project/Scripts/Integration/MOFA+/mofa_variance_per_factor.png",
        plot = p1,
-       width = 6, height = 5, dpi = 300)
+       width = 6, height = 5, dpi = 300, bg="white")
+ggsave("~/Desktop/Research_Project/Scripts/Integration/MOFA+/Factors_per_Patient.png",
+       plot = factors_heatmap,
+       width = 6, height = 5, dpi = 300, bg="white")
+
 
 write.csv(factors, 
-          file = "~/Desktop/iawards/mofa_factor_scores.csv",
+          file = "~/Desktop/Research_Project/Scripts/Integration/MOFA+/mofa_factor_scores.csv",
           row.names = TRUE)
 
 ```
