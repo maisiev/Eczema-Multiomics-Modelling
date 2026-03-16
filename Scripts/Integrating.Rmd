@@ -10,6 +10,7 @@ date: "2026-03-10"
 #if (!require("BiocManager", quietly = TRUE))
  #   install.packages("BiocManager")
 #BiocManager::install("MOFA2")
+
 ```
 
 ```{r}
@@ -24,6 +25,8 @@ library(tibble)
 library(MOFA2)
 library(ggrepel)
 library(pheatmap)
+library(lme4)
+library(lmerTest)
 ```
 
 ### Load Data
@@ -63,7 +66,6 @@ nmr_shotgun <- read.csv("~/Desktop/iawards/shotgun_jose_analysis/Abundance_table
 # Sample metadata with eg_id linking factor
 load("~/Desktop/iawards/metadata/sample_metadata_201106.RData")
 link <- sample_metadata_201106
-
 ```
 
 # Tier 1: Microbiome & Metabolomics
@@ -242,7 +244,7 @@ colSums(is.na(master_table))
 
 ## Step 2: Confounder Checking
 
-Plotting S. aureus abundance against age, EASI score, treatment washout, TWEL and pH across 9 patients. Seeing if any of the variables correlate with SA abundance.
+Plotting S. aureus abundance against age, EASI score, treatment washout, TWEL and pH across 9 patients. Seeing if any of the variables correlate with SA/pathway abundance.
 
 Spearman correlations.
 
@@ -283,7 +285,7 @@ patient_level <- patient_level %>%
 print(patient_level %>% select(eg_id, mean_sa, had_systemic))
 ```
 
-### 2.2. Confounder Plots
+### 2.2. SA Confounder Plots
 
 Plotting variables to see if any associate with S. aureus levels.
 
@@ -374,7 +376,7 @@ sys_SA <- ggplot(patient_level, aes(x = had_systemic, y = mean_sa)) +
 (age_SA + EASI_SA + TCA_SA) / (top_SA + TEWL_SA + PH_SA) / (sys_SA + plot_spacer() + plot_spacer())
 
 # Save combined plot
-ggsave("~/Desktop/Research_Project/Scripts/Integration/confounder_plots.png", 
+ggsave("~/Desktop/Research_Project/Scripts/Integration/Confounders/SA_confounder_plots.png", 
        plot = (age_SA + EASI_SA + TCA_SA) / (top_SA + TEWL_SA + PH_SA) / (sys_SA + plot_spacer() + plot_spacer()),
        width = 15, 
        height = 12, 
@@ -383,7 +385,7 @@ ggsave("~/Desktop/Research_Project/Scripts/Integration/confounder_plots.png",
 
 ```
 
-### 2.3. Spearman Correlation
+### 2.3. SA Spearman Correlation
 
 ```{r}
 # Run Spearman correlations for each continuous variable
@@ -405,147 +407,253 @@ spearman_results <- lapply(confounders, function(var) {
 }) %>% bind_rows
 rownames(spearman_results) <- NULL
 
+write.csv(spearman_results, 
+          file = "~/Desktop/Research_Project/Scripts/Integration/Confounders/SA_Confounders.csv",
+          row.names = TRUE)
+
+
 print(spearman_results)
+```
 
-#--------Pathway Composition Confounders (sample-level, multivariate)------------
-# Test each confounder against pathway composition using PERMANOVA (needed becuase 248 pathways)
-# Multivariate equivalent of Spearman correlations in 2.1
-confounders_pw <- c("age", "EASI", "weeks_since_last_TCS_or_TCI",
-                    "TEWL_mean", "pH_mean", "sa_abundance", "lesional")
+### 2.4. Create Matched Objects
 
-# Remove empty sample
+The SA-specific confounder checks use all the samples and run a univerate test (one SA variable vs all clinical variables). Whereas the metabolite and pathway confounder checks require matches objects, which are filtered, aligned versions of the datasets, restricted to the samples that have data in all three modalities (used later for MOFA+ too). This ensures everything lines up row by row.
+
+```{r}
+# =========================================================
+# Create matched matrices (18 samples with all three modalities)
+# Notes:
+# - GYECZ1193 BACK excluded - no NMR data (corrected in nmr_shotgun at load time)
+# - GYECZ0776 and GYECZ1111 excluded - no microbiome data
+# - Final aligned dataset: 18 samples
+# =========================================================
+
+# ------- Prepare NMR matrix --------------
+load("~/Desktop/iawards/NMR metabolomics/NMR_peakarea_metadata.RData")
+
+# Keep only NMR_sample_id and the 122 metabolite columns
+# Metabolite columns are identified by the quotes in their names
+metabolite_cols <- grep("'", colnames(NMR_peakarea_metadata), value = TRUE)
+NMR_peakarea_metadata <- NMR_peakarea_metadata[, c("NMR_sample_id", metabolite_cols)]
+
+rownames(NMR_peakarea_metadata) <- NMR_peakarea_metadata$NMR_sample_id
+NMR_peakarea_metadata$NMR_sample_id <- NULL
+colnames(NMR_peakarea_metadata) <- gsub("'", "", colnames(NMR_peakarea_metadata))
+
+# Convert to numeric
+nmr_rownames <- rownames(NMR_peakarea_metadata)
+NMR_peakarea_metadata <- as.data.frame(apply(NMR_peakarea_metadata, 2, as.numeric))
+rownames(NMR_peakarea_metadata) <- nmr_rownames
+
+# ------- Prepare species matrix ----------
+species_matched <- t(microbiome)
+rownames(species_matched) <- master_table$NMR_sample_id[
+  match(rownames(species_matched), master_table$sample_id)]
+
+# ------- Align to shared 18 samples ------
+keep_samples <- rownames(species_matched)[
+  rownames(species_matched) %in% rownames(NMR_peakarea_metadata)]
+
+species_matched <- species_matched[keep_samples, ]
+species_matched <- species_matched[, apply(species_matched, 2, var) != 0]  # remove zero variance
+nmr_matched     <- NMR_peakarea_metadata[keep_samples, ]
+
+# ------- Prepare pathway matrix ----------
+pathway_cols    <- colnames(pathways)[!colnames(pathways) %in% c("sample", "sample_short")]
+pathway_matched <- master_table[!is.na(master_table$NMR_sample_id), pathway_cols]
+rownames(pathway_matched) <- master_table$NMR_sample_id[!is.na(master_table$NMR_sample_id)]
+pathway_matched <- pathway_matched[keep_samples, ]
+
+# ------- Prepare metadata ----------------
+meta_matched <- master_table[!is.na(master_table$NMR_sample_id), ] %>%
+  mutate(
+    TEWL_mean              = as.numeric(ifelse(TEWL_mean == "none", NA, TEWL_mean)),
+    pH_mean                = as.numeric(ifelse(pH_mean == "none", NA, pH_mean)),
+    days_since_any_topicals = as.numeric(ifelse(days_since_any_topicals == "none", NA, days_since_any_topicals))
+  )
+rownames(meta_matched) <- meta_matched$NMR_sample_id
+meta_matched <- meta_matched[keep_samples, ]
+
+# ------- Verify alignment ----------------
+dim(species_matched)                                        # 18 x 44
+dim(nmr_matched)                                            # 18 x 38
+dim(pathway_matched)                                        # 18 x 248
+all(rownames(species_matched) == rownames(pathway_matched)) # TRUE
+all(rownames(species_matched) == rownames(meta_matched))    # TRUE
+head(meta_matched)
+```
+
+### 2.5. Pathway & Metabolite Confounders
+
+Do any of the clinical variables co-vary with microbial pathway or metabolite levels? Multivariate testing.
+
+Same variables are tested against both datasets.
+
+-   PERMANOVA (via adonis2 with Bray-Curtis dissimilarity) is used for pathway composition because there are 248 pathways, so this multivariate test is needed. (Bray-Curtis dissimilarity is suited to ecology/microbial data to quantify differences in species abundances).
+
+-   PERMANOVA (but with Euclidian distance instead of Bray-Curtis) is used for metabolite data.
+
+-   For the scatter plots, variables are plot against PC1/PCo1 of metabolites/pathways respectively
+
+Datasets are reduced to 2D using PCA (metabolites) and PCoA (pathways, to preserve Bray-Curtis distances)
+
+```{r}
+# =========================================================
+# 2.5. Confounder Checks (Multivariate)
+# =========================================================
+
+# List of potential confounders for individual screening
+confounders <- c("age", "EASI", "weeks_since_last_TCS_or_TCI",
+                 "TEWL_mean", "pH_mean", "sa_abundance", "lesional")
+
+# ---- 2.5.1 Remove empty pathway sample ------------------
 pathway_matched_clean <- pathway_matched[rowSums(pathway_matched) > 0, ]
-meta_matched_clean <- meta_matched[rownames(pathway_matched_clean), ]
+meta_matched_clean    <- meta_matched[rownames(pathway_matched_clean), ]
 
-# Confirm
-nrow(pathway_matched_clean)  # expect 17
-rownames(pathway_matched_clean)  # confirm which samples remain
+# Ensure pH is numeric for both dataframes
+meta_matched_clean$pH_mean <- as.numeric(meta_matched_clean$pH_mean)
+meta_matched$pH_mean       <- as.numeric(meta_matched$pH_mean)
 
-# Rerun confounder check
-pathway_confounder_results <- lapply(confounders_pw, function(var) {
-  df <- data.frame(var = meta_matched_clean[[var]],
-                   row.names = rownames(pathway_matched_clean))
-  df <- df[complete.cases(df), , drop = FALSE]
+# ---- 2.5.2 Pathway PERMANOVA (Screening + Primary Model) ----
+
+# 1. Screening Individual Variables
+pathway_screening <- lapply(confounders, function(var) {
+  df <- meta_matched_clean[!is.na(meta_matched_clean[[var]]), ]
   pw <- pathway_matched_clean[rownames(df), ]
   
   set.seed(123)
-  test <- adonis2(vegdist(pw, method = "bray") ~ var,
-                  data = df, permutations = 999)
-  data.frame(
-    variable = var,
-    R2 = round(test$R2[1], 3),
-    p_value = round(test$`Pr(>F)`[1], 3)
-  )
+  test <- adonis2(vegdist(pw, method = "bray") ~ df[[var]], permutations = 999)
+  data.frame(variable = var, R2 = round(test$R2[1], 3), p_value = round(test$`Pr(>F)`[1], 3))
 }) %>% bind_rows()
 
-rownames(pathway_confounder_results) <- NULL
-print(pathway_confounder_results)
+# 2. PRIMARY MODEL: SA adjusted for pH
+# Only use samples where both SA and pH data exist
+pathway_complete <- meta_matched_clean[complete.cases(meta_matched_clean[, c("sa_abundance", "pH_mean")]), ]
+pw_dist_complete <- vegdist(pathway_matched_clean[rownames(pathway_complete), ], method = "bray")
 
-# -------metabolites confounder check -------
-metabolite_confounder_results <- lapply(confounders_pw, function(var) {
-  df <- data.frame(var = meta_matched[[var]],
-                   row.names = rownames(nmr_matched))
-  df <- df[complete.cases(df), , drop = FALSE]
+set.seed(123)
+# 'by = margin' assesses the unique contribution of SA after accounting for pH
+pathway_primary_model <- adonis2(pw_dist_complete ~ pH_mean + sa_abundance, 
+                                 data = pathway_complete, 
+                                 permutations = 999, 
+                                 by = "margin",
+                                 strata = pathway_complete$eg_id)
+
+cat("\n--- Pathway Primary Model (Adjusted for pH) ---\n")
+print(pathway_primary_model)
+
+# ---- 2.5.3 Metabolite PERMANOVA (Screening + Primary Model) ----
+
+# 1. Screening Individual Variables
+metabolite_screening <- lapply(confounders, function(var) {
+  df <- meta_matched[!is.na(meta_matched[[var]]), ]
   nm <- nmr_matched[rownames(df), ]
   
   set.seed(123)
-  test <- adonis2(dist(nm, method = "euclidean") ~ var,
-                  data = df, permutations = 999)
-  data.frame(
-    variable = var,
-    R2 = round(test$R2[1], 3),
-    p_value = round(test$`Pr(>F)`[1], 3)
-  )
+  test <- adonis2(dist(scale(nm)) ~ df[[var]], permutations = 999)
+  data.frame(variable = var, R2 = round(test$R2[1], 3), p_value = round(test$`Pr(>F)`[1], 3))
 }) %>% bind_rows()
 
-rownames(metabolite_confounder_results) <- NULL
-print(metabolite_confounder_results)
-```
+# 2. PRIMARY MODEL: SA adjusted for pH
+met_complete <- meta_matched[complete.cases(meta_matched[, c("sa_abundance", "pH_mean")]), ]
+nm_scaled    <- scale(nmr_matched[rownames(met_complete), ])
+met_dist_complete <- dist(nm_scaled, method = "euclidean")
 
-```{r}
-# Plot metabolite and pathway confounders using PCA reduction
-library(ggpubr)
+set.seed(123)
+metabolite_primary_model <- adonis2(met_dist_complete ~ pH_mean + sa_abundance, 
+                                    data = met_complete, 
+                                    permutations = 999, 
+                                    by = "margin",
+                                    strata = met_complete$eg_id)
 
-# Shared theme matching your SA confounder plots
+cat("\n--- Metabolite Primary Model (Adjusted for pH) ---\n")
+print(metabolite_primary_model)
+
+# Standardizing Metabolite objects for Section 3c
+metab_matched_clean <- nmr_matched    # Use the NMR data as your metabolite base
+meta_metab_clean    <- meta_matched   # Use the matched metadata
+# ---- 2.5.4 Save Screening Results -----------------------
+write.csv(pathway_screening, "~/Desktop/Research_Project/Scripts/Integration/Confounders/Pathway_Confounders.csv")
+write.csv(metabolite_screening, "~/Desktop/Research_Project/Scripts/Integration/Confounders/Metabolite_Confounders.csv")
+
+# ---- 2.5.5 Visualisation Prep (PCA/PCoA) ----------------
+# [Keep your existing plotting logic for m1-m6 and p1-p6 here]
+# [These plots are excellent for showing the raw relationship before adjustment]
+
+# ---- 2.5.4 Shared plot theme ----------------------------
 my_theme <- theme(
   plot.title = element_text(size = 16, face = "bold"),
   axis.title = element_text(size = 16),
-  axis.text = element_text(size = 16),
+  axis.text  = element_text(size = 16),
   axis.text.x = element_text(angle = 45, hjust = 1)
 )
 
-#-------- Metabolite PCA --------
+# ---- 2.5.5 Metabolite PCA -------------------------------
 metabolite_pca <- prcomp(nmr_matched, scale. = TRUE)
-var_explained <- round(summary(metabolite_pca)$importance[2, 1:2] * 100, 1)
+var_explained  <- round(summary(metabolite_pca)$importance[2, 1:2] * 100, 1)
 
 meta_plot_df <- data.frame(
-  PC1 = metabolite_pca$x[, 1],
-  PC2 = metabolite_pca$x[, 2],
-  age = meta_matched$age,
-  EASI = meta_matched$EASI,
-  TEWL_mean = meta_matched$TEWL_mean,
-  pH_mean = meta_matched$pH_mean,
+  PC1          = metabolite_pca$x[, 1],
+  PC2          = metabolite_pca$x[, 2],
+  age          = meta_matched$age,
+  EASI         = meta_matched$EASI,
+  TEWL_mean    = meta_matched$TEWL_mean,
+  pH_mean      = meta_matched$pH_mean,
   sa_abundance = meta_matched$sa_abundance,
-  lesional = meta_matched$lesional
+  lesional     = meta_matched$lesional
 )
 
-# Continuous confounder plots - scatter with trend line
 plot_met_continuous <- function(x_var, title) {
   ggplot(meta_plot_df, aes(x = .data[[x_var]], y = PC1)) +
     geom_point(size = 3) +
     geom_smooth(method = "lm", se = TRUE, colour = "steelblue") +
     stat_cor(method = "spearman", label.x.npc = "left", size = 5) +
-    labs(title = title,
-         x = x_var,
+    labs(title = title, x = x_var,
          y = paste0("PC1 (", var_explained[1], "%)")) +
-    theme_classic() +
-    my_theme
+    theme_classic() + my_theme
 }
 
-# Categorical confounder plot
 plot_met_categorical <- function(x_var, title) {
   ggplot(meta_plot_df, aes(x = .data[[x_var]], y = PC1,
                             colour = .data[[x_var]])) +
     geom_boxplot(outlier.shape = NA, colour = "black") +
     geom_jitter(width = 0.1, size = 3) +
     scale_colour_manual(values = c("LES" = "salmon", "NON_LES" = "#008080")) +
-    labs(title = title,
-         x = x_var,
+    labs(title = title, x = x_var,
          y = paste0("PC1 (", var_explained[1], "%)")) +
-    theme_classic() +
-    my_theme +
+    theme_classic() + my_theme +
     theme(legend.position = "none")
 }
 
 m1 <- plot_met_continuous("sa_abundance", "SA Abundance vs Metabolite PC1")
-m2 <- plot_met_continuous("EASI", "EASI vs Metabolite PC1")
-m3 <- plot_met_continuous("pH_mean", "pH vs Metabolite PC1")
-m4 <- plot_met_continuous("TEWL_mean", "TEWL vs Metabolite PC1")
-m5 <- plot_met_continuous("age", "Age vs Metabolite PC1")
-m6 <- plot_met_categorical("lesional", "Lesional vs Metabolite PC1")
+m2 <- plot_met_continuous("EASI",         "EASI vs Metabolite PC1")
+m3 <- plot_met_continuous("pH_mean",      "pH vs Metabolite PC1")
+m4 <- plot_met_continuous("TEWL_mean",    "TEWL vs Metabolite PC1")
+m5 <- plot_met_continuous("age",          "Age vs Metabolite PC1")
+m6 <- plot_met_categorical("lesional",    "Lesional vs Metabolite PC1")
 
 metabolite_confounder_plot <- (m1 + m2 + m3) / (m4 + m5 + m6) +
   plot_annotation(title = "Metabolite Composition by Confounder (PCA)")
 
 print(metabolite_confounder_plot)
-ggsave("~/Desktop/Research_Project/Scripts/Integration/metabolite_confounder_pca.png",
+ggsave("~/Desktop/Research_Project/Scripts/Integration/Confounders/metabolite_confounder_pca.png",
        plot = metabolite_confounder_plot, width = 15, height = 10, dpi = 300)
 
-#-------- Pathway PCoA --------
+# ---- 2.5.6 Pathway PCoA ---------------------------------
 pathway_pcoa <- cmdscale(vegdist(pathway_matched_clean, method = "bray"),
-                          k = 2, eig = TRUE)
-eig_vals <- pathway_pcoa$eig
-pcoa_var <- round(eig_vals[1:2] / sum(eig_vals[eig_vals > 0]) * 100, 1)
+                         k = 2, eig = TRUE)
+eig_vals  <- pathway_pcoa$eig
+pcoa_var  <- round(eig_vals[1:2] / sum(eig_vals[eig_vals > 0]) * 100, 1)
 
 pathway_plot_df <- data.frame(
-  PC1 = pathway_pcoa$points[, 1],
-  PC2 = pathway_pcoa$points[, 2],
-  age = meta_matched_clean$age,
-  EASI = meta_matched_clean$EASI,
-  TEWL_mean = meta_matched_clean$TEWL_mean,
-  pH_mean = meta_matched_clean$pH_mean,
+  PC1          = pathway_pcoa$points[, 1],
+  PC2          = pathway_pcoa$points[, 2],
+  age          = meta_matched_clean$age,
+  EASI         = meta_matched_clean$EASI,
+  TEWL_mean    = meta_matched_clean$TEWL_mean,
+  pH_mean      = meta_matched_clean$pH_mean,
   sa_abundance = meta_matched_clean$sa_abundance,
-  lesional = meta_matched_clean$lesional
+  lesional     = meta_matched_clean$lesional
 )
 
 plot_pw_continuous <- function(x_var, title) {
@@ -553,11 +661,9 @@ plot_pw_continuous <- function(x_var, title) {
     geom_point(size = 3) +
     geom_smooth(method = "lm", se = TRUE, colour = "steelblue") +
     stat_cor(method = "spearman", label.x.npc = "left", size = 5) +
-    labs(title = title,
-         x = x_var,
+    labs(title = title, x = x_var,
          y = paste0("PCo1 (", pcoa_var[1], "%)")) +
-    theme_classic() +
-    my_theme
+    theme_classic() + my_theme
 }
 
 plot_pw_categorical <- function(x_var, title) {
@@ -566,32 +672,32 @@ plot_pw_categorical <- function(x_var, title) {
     geom_boxplot(outlier.shape = NA, colour = "black") +
     geom_jitter(width = 0.1, size = 3) +
     scale_colour_manual(values = c("LES" = "salmon", "NON_LES" = "#008080")) +
-    labs(title = title,
-         x = x_var,
+    labs(title = title, x = x_var,
          y = paste0("PCo1 (", pcoa_var[1], "%)")) +
-    theme_classic() +
-    my_theme +
+    theme_classic() + my_theme +
     theme(legend.position = "none")
 }
 
 p1 <- plot_pw_continuous("sa_abundance", "SA Abundance vs Pathway PCo1")
-p2 <- plot_pw_continuous("EASI", "EASI vs Pathway PCo1")
-p3 <- plot_pw_continuous("pH_mean", "pH vs Pathway PCo1")
-p4 <- plot_pw_continuous("TEWL_mean", "TEWL vs Pathway PCo1")
-p5 <- plot_pw_continuous("age", "Age vs Pathway PCo1")
-p6 <- plot_pw_categorical("lesional", "Lesional vs Pathway PCo1")
+p2 <- plot_pw_continuous("EASI",         "EASI vs Pathway PCo1")
+p3 <- plot_pw_continuous("pH_mean",      "pH vs Pathway PCo1")
+p4 <- plot_pw_continuous("TEWL_mean",    "TEWL vs Pathway PCo1")
+p5 <- plot_pw_continuous("age",          "Age vs Pathway PCo1")
+p6 <- plot_pw_categorical("lesional",    "Lesional vs Pathway PCo1")
 
 pathway_confounder_plot <- (p1 + p2 + p3) / (p4 + p5 + p6) +
   plot_annotation(title = "Pathway Composition by Confounder (PCoA)")
 
 print(pathway_confounder_plot)
-ggsave("~/Desktop/Research_Project/Scripts/Integration/pathway_confounder_pcoa.png",
+ggsave("~/Desktop/Research_Project/Scripts/Integration/Confounders/pathway_confounder_pcoa.png",
        plot = pathway_confounder_plot, width = 15, height = 10, dpi = 300)
 ```
 
 ## Step 3: Confirm S. Aureus Structures the Microbiome Composition
 
 Phyloseq object with samples and taxa that matches the species table.
+
+The samples are paired
 
 ### 3a.1. Add the metadata and SA high/low grouping
 
@@ -600,6 +706,7 @@ The SA distribution is heavily skewed towards high SA - 16 out of 20 samples hav
 I will use the median split for the formal PERMANOVA then use continuous SA abundance in the Mantel test which avoids the binary split problem.
 
 ```{r}
+
 # Create metadata dataframe matched to phyloseq sample names
 
 # Match master_table to phyloseq sample names using sample_id
@@ -623,57 +730,133 @@ sample_data(physeq)$sa_group <- ifelse(
   "SA_high", "SA_low")
 
 table(sample_data(physeq)$sa_group)
+
+
+# --- Remove empty sample "P22757_140_S22_L001d_metagenome" ----
+# 1. Identify and Remove the empty sample from all data objects
+bad_sample <- "P22757_140_S22_L001d_metagenome"
+
 ```
 
-### 3a.2. PERMANOVA
+### 3a.2. PERMANOVA (Microbiome)
 
 PERMANOVA confirms that the microbiome composition differs by SA high/low.
 
+Adjusting for effect of pH to ensure the change is from SA and not just due to skin acidity.
+
 ```{r}
-# Extract OTU table and metadata
-otu_mat <- as.data.frame(otu_table(physeq))
+# --- STEP 1: Get raw data out of Phyloseq ---
+otu_raw <- as.data.frame(t(otu_table(physeq))) # Samples as rows
+meta_raw <- data.frame(sample_data(physeq))
 
-# Transpose if necessary - vegan needs samples as rows
-if(taxa_are_rows(physeq)){
-  otu_mat <- t(otu_mat)
-}
+# --- STEP 2: Handle pH Formatting (Numeric) ---
+# We do this first so we know which samples have "bad" pH values
+meta_raw$pH_mean <- as.numeric(as.character(meta_raw$pH_mean))
 
-meta <- data.frame(sample_data(physeq))
+# --- STEP 3: Identify "Bad" Samples ---
+# A. Samples with 0 total counts
+zero_samples <- rownames(otu_raw)[rowSums(otu_raw) == 0]
+# B. Samples with missing pH (the NAs we just introduced)
+na_ph_samples <- rownames(meta_raw)[is.na(meta_raw$pH_mean)]
 
-# Calculate Bray-Curtis distance matrix
-bray_dist <- vegdist(otu_mat, method = "bray")
+# Combine them into one list of samples to drop
+all_drops <- unique(c(zero_samples, na_ph_samples))
+cat("Dropping samples:", all_drops, "\n")
 
-# PERMANOVA with SA group, blocking by patient
+# --- STEP 4: Create the "Final" Clean Objects ---
+# Only keep samples that are NOT in the drop list
+keep_samples  <- setdiff(rownames(otu_raw), all_drops)
+
+otu_final     <- otu_raw[keep_samples, ]
+meta_final    <- meta_raw[keep_samples, ]
+
+# Verify they match perfectly
+cat("Final count:", nrow(meta_final), "samples\n")
+
+# --- STEP 5: Calculate Distance ---
+bray_dist_final <- vegdist(otu_final, method = "bray")
+
+# --- STEP 6: Run PERMANOVA ---
+# Use 'meta_final' for everything so the rows match bray_dist_final
 set.seed(123)
-permanova_result <- adonis2(
-  bray_dist ~ sa_group,
-  data = meta,
+permanova_microbiome <- adonis2(
+  bray_dist_final ~ pH_mean + sa_group,
+  data = meta_final,
   permutations = 999,
-  strata = meta$eg_id # Accounts for fact that multiple samples come from same patient
+  by = "margin",
+  strata = meta_final$eg_id
 )
 
-print(permanova_result)
+# Convert the PERMANOVA table to a data frame
+permanova_df <- as.data.frame(permanova_microbiome)
+
+# Add a column for the term names (pH_mean, sa_group, etc.)
+permanova_df$Variable <- rownames(permanova_df)
+
+# Save to your project folder
+write.csv(permanova_df, 
+          "~/Desktop/Research_Project/Scripts/Integration/SA_Effect/permanova_microbiome_results.csv", 
+          row.names = FALSE)
+
+print(permanova_microbiome)
 ```
 
-### 3a.3. Mantel Test (with continuous S. aureus variable)
+### 3a.3. Partial Mantel Test (Microbiome)
 
 This uses continuous SA rather than binary split to complement the PERMANOVA result. If both agree = robust.
 
+Partial mantel test adjusts for the influence of pH.
+
 ```{r}
 # Mantel test - continuous SA vs microbiome distance
-# Build SA distance matrix
-sa_dist <- dist(meta$sa_abundance)
+# 1. Ensure SA and pH are strictly numeric for the distance calculation
+sa_values <- as.numeric(meta_final$sa_abundance)
+ph_values <- as.numeric(meta_final$pH_mean)
 
-# Run Mantel test
+# 2. Re-calculate the three distance matrices
+# Community distance (Bray-Curtis)
+bc_dist <- vegdist(otu_final, method = "bray")
+
+# S. aureus distance (Euclidean distance of abundance)
+sa_dist <- dist(sa_values)
+
+# pH distance (Euclidean distance of pH)
+ph_dist <- dist(ph_values)
+
+# 3. Check for NAs one last time (Should return 0)
+cat("NAs in BC:", sum(is.na(bc_dist)), 
+    "| NAs in SA:", sum(is.na(sa_dist)), 
+    "| NAs in pH:", sum(is.na(ph_dist)), "\n")
+
+# 4. Run the Partial Mantel
 set.seed(123)
-mantel_result <- mantel(bray_dist, sa_dist,
-                        method = "spearman",
-                        permutations = 999)
+mantel_result <- mantel.partial(bc_dist, sa_dist, ph_dist, 
+                                 method = "spearman", 
+                                 permutations = 999)
+# ------- Save--------------
+# Create a dedicated results file
+report_path <- "~/Desktop/Research_Project/Scripts/Integration/SA_Effect/Partial_Mantel_Microbiome.txt"
+
+# Open connection
+sink(report_path)
+
+cat("========================================================\n")
+cat("SECTION 3A: PARTIAL MANTEL TEST RESULTS\n")
+cat("Question: Is Microbiome structure linked to SA, controlling for pH?\n")
+cat("Date:", Sys.Date(), "\n")
+cat("========================================================\n\n")
+
+print(mantel_result)
+
+# Close connection
+sink()
+
+cat("Report saved to:", report_path, "\n")
 
 print(mantel_result)
 ```
 
-### 3a.4. Alpha Diversity
+### 3a.4. Alpha Diversity (Microbiome)
 
 Alpha diversity = measuring the diversity within a single sample = how many different species are present and how evenly distributed are they. One number per sample summarises its complexity.
 
@@ -684,285 +867,360 @@ Measuring:
 
 Will correlate each sample's alpha diversity score with its SA abundance using Spearman's correlation. (Sig correlation if SA high samples have lower diversity than SA low samples).
 
+Adjusts for pH. Uses Linear Mixed Model (lme4 package), to handle covariates.
+
 Shannon and Richness:
 
 ```{r}
-# Calculate alpha diversity
-# Note: singleton warning expected for MetaPhlAn relative abundance data
-# MetaPhlAn does not produce count data so absence of singletons is normal
-alpha_div <- estimate_richness(physeq, 
-                               measures = c("Shannon", "Observed"))
+# =========================================================
+# 3a.4. Alpha Diversity (LMM - Adjusted for pH & Patient)
+# =========================================================
 
-# Add SA abundance and patient ID
-alpha_div$sa_abundance <- meta$sa_abundance
-alpha_div$eg_id <- meta$eg_id
-alpha_div$sa_group <- meta$sa_group
+# 1. Calculate Alpha Diversity
+# Note: MetaPhlAn relative abundance data lacks singletons; ignore warnings.
+alpha_div <- estimate_richness(physeq, measures = c("Shannon", "Observed"))
+# Remove bad sample from Alpha Diversity
+alpha_div <- alpha_div[rownames(meta_final), ]
 
-# Spearman correlations
-shannon_cor <- cor.test(alpha_div$sa_abundance, 
-                        alpha_div$Shannon,
-                        method = "spearman")
+# 2. Synchronize Metadata
+# We pull these directly from the 'meta' object created in 3a.2 to ensure row alignment
+alpha_div$sa_abundance <- meta_final$sa_abundance
+alpha_div$pH_mean      <- as.numeric(meta_final$pH_mean)
+alpha_div$eg_id        <- meta_final$eg_id
+alpha_div$sa_group     <- meta_final$sa_group
 
-richness_cor <- cor.test(alpha_div$sa_abundance,
-                         alpha_div$Observed,
-                         method = "spearman")
+# 3. Linear Mixed-Effects Models (LMM)
+# (1|eg_id) handles the 6 pairs and 1 single sample automatically.
+# sa_abundance + pH_mean tests the unique effect of SA while holding pH constant.
 
-cat("Shannon vs SA - rho:", round(shannon_cor$estimate, 3),
-    "p:", format(shannon_cor$p.value, scientific = TRUE, digits = 3), "\n")
-cat("Richness vs SA - rho:", round(richness_cor$estimate, 3),
-    "p:", format(richness_cor$p.value, scientific = TRUE, digits = 3), "\n")
-```
+cat("\n--- LMM: Shannon Diversity vs SA (Adjusted for pH) ---\n")
+shannon_lmm <- lmer(Shannon ~ sa_abundance + pH_mean + (1|eg_id), data = alpha_div)
+print(summary(shannon_lmm))
 
-Plot Alpha Diversity:
+cat("\n--- LMM: Observed Richness vs SA (Adjusted for pH) ---\n")
+richness_lmm <- lmer(Observed ~ sa_abundance + pH_mean + (1|eg_id), data = alpha_div)
+print(summary(richness_lmm))
 
-```{r}
+# 4. Extracting Clean Results for Reporting
+# We pull the 'Estimate' and 'Pr(>|t|)' for the sa_abundance row
+shannon_stats  <- summary(shannon_lmm)$coefficients["sa_abundance", ]
+richness_stats <- summary(richness_lmm)$coefficients["sa_abundance", ]
+
+cat("\n--- Summary Results (Adjusted for pH and Pairing) ---\n")
+cat("Shannon vs SA  - Estimate:", round(shannon_stats[1], 3), 
+    "p-value:", format(shannon_stats[5], scientific = TRUE, digits = 3), "\n")
+cat("Richness vs SA - Estimate:", round(richness_stats[1], 3), 
+    "p-value:", format(richness_stats[5], scientific = TRUE, digits = 3), "\n")
+
+# Save
+lmm_report_path <- "~/Desktop/Research_Project/Scripts/Integration/SA_Effect/Alpha_Diversity_LMM_Microbiome.txt"
+# Open connection
+sink(lmm_report_path)
+
+cat("========================================================\n")
+cat("SECTION 3A: ALPHA DIVERSITY LMM RESULTS\n")
+cat("Question: Does SA affect Diversity/Richness after adjusting for pH?\n")
+cat("Model: Metric ~ sa_abundance + pH_mean + (1|eg_id)\n")
+cat("Date:", Sys.Date(), "\n")
+cat("========================================================\n\n")
+
+cat("--- 1. SHANNON DIVERSITY MODEL ---\n")
+print(summary(shannon_lmm))
+cat("\n--------------------------------------------------------\n")
+
+cat("\n--- 2. OBSERVED RICHNESS MODEL ---\n")
+print(summary(richness_lmm))
+cat("\n--------------------------------------------------------\n")
+
+cat("\n--- 3. QUICK SUMMARY TABLE (Fixed Effects) ---\n")
+cat("Shannon vs SA  - Estimate:", round(summary(shannon_lmm)$coefficients["sa_abundance", 1], 4), 
+    "| p-value:", format(summary(shannon_lmm)$coefficients["sa_abundance", 5], scientific = TRUE), "\n")
+cat("Richness vs SA - Estimate:", round(summary(richness_lmm)$coefficients["sa_abundance", 1], 4), 
+    "| p-value:", format(summary(richness_lmm)$coefficients["sa_abundance", 5], scientific = TRUE), "\n")
+
+# Close connection
+sink()
+
+
+# 5. Visualization
+# We keep Spearman on the plot for a "raw trend" view, 
+# but your text should report the LMM p-values from above.
+
 p_shannon <- ggplot(alpha_div, aes(x = sa_abundance, y = Shannon)) +
-  geom_point(size = 3) +
+  geom_point(size = 3, alpha = 0.7) +
   geom_smooth(method = "lm", se = TRUE, colour = "steelblue") +
   stat_cor(method = "spearman", label.x.npc = "left", size = 5) +
-  labs(title = "Shannon Diversity vs SA Abundance",
-       x = "SA Abundance (%)", y = "Shannon Diversity") +
-  theme_classic() +
-  my_theme
+  labs(title = "Shannon Diversity vs SA",
+       subtitle = paste("LMM p-adj =", format(shannon_stats[5], digits=2)),
+       x = "SA Abundance (%)", y = "Shannon Index") +
+  theme_classic() + my_theme
 
 p_richness <- ggplot(alpha_div, aes(x = sa_abundance, y = Observed)) +
-  geom_point(size = 3) +
+  geom_point(size = 3, alpha = 0.7) +
   geom_smooth(method = "lm", se = TRUE, colour = "steelblue") +
   stat_cor(method = "spearman", label.x.npc = "left", size = 5) +
-  labs(title = "Species Richness vs SA Abundance",
+  labs(title = "Species Richness vs SA",
+       subtitle = paste("LMM p-adj =", format(richness_stats[5], digits=2)),
        x = "SA Abundance (%)", y = "Observed Species") +
-  theme_classic() +
-  my_theme
+  theme_classic() + my_theme
 
+final_plot <- (p_shannon + p_richness) 
+# Save to Desktop
+ggsave("~/Desktop/Research_Project/Scripts/Integration/SA_Effect/alpha_diversity_plots.png",
+       plot = final_plot,
+       width = 12, height = 5, dpi = 300)
+
+# Combine plots using patchwork (ensure library(patchwork) is loaded)
 p_shannon + p_richness
 
-ggsave("~/Desktop/Research_Project/Scripts/Integration/alpha_diversity_plots.png",
-       plot = p_shannon + p_richness,
-       width = 12, height = 5, dpi = 300)
 ```
 
-### 3b. Add Pathway Data
+### 3b. SA Effect on Pathways
 
 ```{r}
-#--------Confirm SA Structures Pathway Composition --------
+# =========================================================
+# 3b. Pathway Data: SA Structures & Integration (N=14-17)
+# =========================================================
 
-# Add SA group to meta_matched_clean
-meta_matched_clean$sa_group <- ifelse(
-  meta_matched_clean$sa_abundance >= median(meta_matched_clean$sa_abundance),
-  "SA_high", "SA_low")
+# ---- 3b.1 Bridge IDs & Data Alignment -------------------
 
-# PERMANOVA with SA group
+# 1. Use the "Final 17" metadata as the base
+meta_pw_final <- meta_final 
+
+# 2. Fix naming conventions to match Pathway Table (e.g., NON_LES -> NONLES)
+meta_pw_final$les_clean <- gsub("NON_LES", "NONLES", meta_pw_final$lesional)
+meta_pw_final$site_clean <- toupper(meta_pw_final$sample_site)
+
+# 3. Create the bridge ID (Format: eg_id.SITE.STATUS)
+meta_pw_final$bridge_id <- paste(meta_pw_final$eg_id, 
+                                 meta_pw_final$site_clean, 
+                                 meta_pw_final$les_clean, 
+                                 sep = ".")
+
+# 4. Pull and align Pathway data
+# This uses the bridge IDs to pull data from the raw pathway table
+pathway_final <- pathway_matched_clean[meta_pw_final$bridge_id, ]
+rownames(pathway_final) <- rownames(meta_pw_final)
+
+# 5. Handle NAs (Convert missing detections to 0)
+pathway_clean <- pathway_final
+pathway_clean[is.na(pathway_clean)] <- 0
+
+# 6. Filter out "Ghost Samples" (Samples that had no match/zero pathways)
+# This prevents the "missing value where TRUE/FALSE needed" error
+keep_idx <- rowSums(pathway_clean) > 0
+final_pathway_data <- pathway_clean[keep_idx, ]
+final_metadata     <- meta_pw_final[keep_idx, ]
+
+# Final Verification
+cat("Total Samples with data:", nrow(final_metadata), "\n")
+cat("NAs remaining in pathway data:", sum(is.na(final_pathway_data)), "\n")
+
+# ---- 3b.2 Primary Pathway PERMANOVA ---------------------
 set.seed(123)
 permanova_pathway <- adonis2(
-  vegdist(pathway_matched_clean, method = "bray") ~ sa_group,
-  data = meta_matched_clean,
+  vegdist(final_pathway_data, method = "bray") ~ pH_mean + sa_group,
+  data = final_metadata,
   permutations = 999,
-  strata = meta_matched_clean$eg_id
+  by = "margin",                
+  strata = final_metadata$eg_id 
 )
+cat("\n--- Pathway PERMANOVA Results ---\n")
 print(permanova_pathway)
 
-# Mantel test - continuous SA vs pathway distance
-sa_dist_pw <- dist(meta_matched_clean$sa_abundance)
-pathway_dist_clean <- vegdist(pathway_matched_clean, method = "bray")
+# ---- 3b.3 Integration: Partial Mantel Test --------------
+pw_dist_mat <- vegdist(final_pathway_data, method = "bray")
+sa_dist_pw  <- dist(final_metadata$sa_abundance)
+ph_dist_pw  <- dist(final_metadata$pH_mean)
 
 set.seed(123)
-mantel_pathway <- mantel(pathway_dist_clean, sa_dist_pw,
-                         method = "spearman",
-                         permutations = 999)
-print(mantel_pathway)
+mantel_pw <- mantel.partial(
+  pw_dist_mat, sa_dist_pw, ph_dist_pw, 
+  method = "spearman", permutations = 999
+)
+cat("\n--- Partial Mantel Results ---\n")
+print(mantel_pw)
 
-# Pathway richness (number of pathways detected per sample)
-pathway_richness <- data.frame(
-  sample = rownames(pathway_matched_clean),
-  richness = rowSums(pathway_matched_clean > 0),
-  sa_abundance = meta_matched_clean$sa_abundance,
-  sa_group = meta_matched_clean$sa_group
+# ---- 3b.4 Pathway Richness (LMM) ------------------------
+pathway_richness_df <- data.frame(
+  richness     = rowSums(final_pathway_data > 0),
+  sa_abundance = final_metadata$sa_abundance,
+  pH_mean      = final_metadata$pH_mean,
+  eg_id        = final_metadata$eg_id,
+  lesional     = final_metadata$lesional
 )
 
-# Spearman correlation
-richness_cor_pw <- cor.test(pathway_richness$sa_abundance,
-                             pathway_richness$richness,
-                             method = "spearman")
-cat("Pathway richness vs SA - rho:", round(richness_cor_pw$estimate, 3),
-    "p:", format(richness_cor_pw$p.value, scientific = TRUE, digits = 3), "\n")
+library(lme4)
+library(lmerTest)
+pw_rich_lmm <- lmer(richness ~ sa_abundance + pH_mean + (1|eg_id), 
+                    data = pathway_richness_df)
+pw_rich_summary <- summary(pw_rich_lmm)
+print(pw_rich_summary)
 
-# Plot
-p_pathway_richness <- ggplot(pathway_richness, 
-                              aes(x = sa_abundance, y = richness)) +
-  geom_point(size = 3) +
+# Extract p-value for plotting
+pw_p_val <- pw_rich_summary$coefficients["sa_abundance", "Pr(>|t|)"]
+
+# ---- 3b.5 Save Results & Visualization ------------------
+
+# 1. Save Text Report
+sink("~/Desktop/Research_Project/Scripts/Integration/SA_Effect/Pathway_Results.txt")
+cat("SECTION 3B: FUNCTIONAL PATHWAY RESULTS\n")
+cat("Final N =", nrow(final_metadata), "\n\n")
+cat("--- 1. PATHWAY PERMANOVA ---\n")
+print(permanova_pathway)
+cat("\n--- 2. PATHWAY PARTIAL MANTEL (SA vs Pathways | pH) ---\n")
+print(mantel_pw)
+cat("\n--- 3. PATHWAY RICHNESS LMM ---\n")
+print(pw_rich_summary)
+sink()
+
+# 2. Generate Plots
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+
+p_pw_rich_sa <- ggplot(pathway_richness_df, aes(x = sa_abundance, y = richness)) +
+  geom_point(size = 3, alpha = 0.7) +
   geom_smooth(method = "lm", se = TRUE, colour = "steelblue") +
-  stat_cor(method = "spearman", label.x.npc = "left", size = 5) +
-  labs(title = "Pathway Richness vs SA Abundance",
-       x = "SA Abundance (%)", 
-       y = "Number of Pathways Detected") +
-  theme_classic() +
-  my_theme
+  stat_cor(method = "spearman", label.y.npc = "top") +
+  labs(title = "Pathway Richness vs SA",
+       subtitle = paste("LMM Adjusted p =", format(pw_p_val, digits = 3)),
+       x = "SA Abundance (%)", y = "Number of Pathways") +
+  theme_classic()
 
-print(p_pathway_richness)
-
-ggsave("~/Desktop/Research_Project/Scripts/Integration/pathway_richness_sa.png",
-       plot = p_pathway_richness,
-       width = 6, height = 5, dpi = 300)
-
-# -------- pH Sensitivity Checks --------
-# Using pathway_matched_clean (17 samples) and meta_matched_clean
-
-library(vegan)
-
-# Ensure pH is numeric
-meta_matched_clean$pH_mean <- as.numeric(
-  ifelse(meta_matched_clean$pH_mean == "none", NA, meta_matched_clean$pH_mean))
-
-# Remove samples with missing pH
-ph_samples <- rownames(meta_matched_clean)[!is.na(meta_matched_clean$pH_mean)]
-cat("Samples with pH data:", length(ph_samples), "\n")
-
-pathway_ph <- pathway_matched_clean[ph_samples, ]
-meta_ph    <- meta_matched_clean[ph_samples, ]
-
-# Bray-Curtis distance for pH subset
-bc_dist_ph <- vegdist(pathway_ph, method = "bray")
-
-# -------- 1. PERMANOVA - pH --------
-set.seed(123)
-perm_ph <- adonis2(bc_dist_ph ~ pH_mean, 
-                   data = meta_ph,
-                   permutations = 999)
-print(perm_ph)
-
-# Compare to SA PERMANOVA in same subset
-set.seed(123)
-perm_sa_ph <- adonis2(bc_dist_ph ~ sa_abundance,
-                      data = meta_ph,
-                      permutations = 999)
-print(perm_sa_ph)
-
-# -------- 2. Mantel - pH --------
-ph_dist <- dist(meta_ph$pH_mean)
-sa_dist <- dist(meta_ph$sa_abundance)
-
-mantel_ph <- mantel(bc_dist_ph, ph_dist, 
-                    method = "spearman", permutations = 999)
-cat("\nMantel test - pathway distance vs pH:\n")
-print(mantel_ph)
-
-mantel_sa_ph <- mantel(bc_dist_ph, sa_dist,
-                       method = "spearman", permutations = 999)
-cat("\nMantel test - pathway distance vs SA (pH subset):\n")
-print(mantel_sa_ph)
-
-# -------- 3. Alpha Diversity - pH --------
-pathway_richness_ph <- rowSums(pathway_ph > 0)
-
-cat("\nSpearman: pathway richness vs pH\n")
-cor.test(pathway_richness_ph, meta_ph$pH_mean, method = "spearman")
-
-cat("\nSpearman: pathway richness vs SA (pH subset)\n")
-cor.test(pathway_richness_ph, meta_ph$sa_abundance, method = "spearman")
-
-# -------- Plot pH vs pathway richness --------
-ph_df <- data.frame(
-  sample = ph_samples,
-  pH_mean = meta_ph$pH_mean,
-  sa_abundance = meta_ph$sa_abundance,
-  pathway_richness = pathway_richness_ph,
-  lesional = meta_ph$lesional
-)
-
-p_ph_rich <- ggplot(ph_df, aes(x = pH_mean, y = pathway_richness,
-                                colour = lesional)) +
+p_pw_rich_ph <- ggplot(pathway_richness_df, aes(x = pH_mean, y = richness, colour = lesional)) +
   geom_point(size = 3) +
   geom_smooth(method = "lm", se = TRUE, colour = "black", linetype = "dashed") +
   scale_colour_manual(values = c("LES" = "#E41A1C", "NON_LES" = "#377EB8")) +
   labs(title = "Pathway Richness vs Skin pH",
-       x = "pH", y = "Pathway Richness",
-       colour = "Lesional Status") +
+       x = "pH", y = "Pathway Richness") +
   theme_classic()
 
-p_ph_rich
+combined_pw_plot <- p_pw_rich_sa | p_pw_rich_ph
+print(combined_pw_plot)
 
-ggsave("~/Desktop/Research_Project/Scripts/Integration/MOFA+/pathway_richness_pH.png",
-       plot = p_ph_rich, width = 7, height = 5, dpi = 300, bg = "white")
+ggsave("~/Desktop/Research_Project/Scripts/Integration/SA_Effect/pathway_richness_combined.png",
+       plot = combined_pw_plot, width = 12, height = 5, dpi = 300)
+```
+
+### 3c. SA Effect on Metabolites
+
+```{r}
+# =========================================================
+# 3c. Metabolite Data: SA Structures & Integration
+# =========================================================
+
+# ---- 3c.1 Bridge IDs & Data Alignment -------------------
+
+# 1. Align Metabolite Data (assuming object is named 'metab_matched_clean')
+meta_metab_final <- meta_final 
+meta_metab_final$les_clean <- gsub("NON_LES", "NONLES", meta_metab_final$lesional)
+meta_metab_final$site_clean <- toupper(meta_metab_final$sample_site)
+
+# 2. Create the bridge ID (e.g., GYECZ1193.BACK.LES)
+meta_metab_final$bridge_id <- paste(meta_metab_final$eg_id, 
+                                    meta_metab_final$site_clean, 
+                                    meta_metab_final$les_clean, 
+                                    sep = ".")
+
+# 3. Filter and Sync
+metab_final_data <- metab_matched_clean[meta_metab_final$bridge_id, ]
+rownames(metab_final_data) <- rownames(meta_metab_final)
+metab_final_data[is.na(metab_final_data)] <- 0
+
+# 4. Filter empty rows (standard for metabolomics to avoid Bray-Curtis errors)
+keep_metab <- rowSums(metab_final_data) > 0
+metab_clean <- metab_final_data[keep_metab, ]
+meta_metab_clean <- meta_metab_final[keep_metab, ]
+
+cat("Metabolite Analysis N:", nrow(meta_metab_clean), "\n")
+
+# ---- 3c.2 Primary Metabolite PERMANOVA ------------------
+set.seed(123)
+permanova_metab <- adonis2(
+  vegdist(metab_clean, method = "bray") ~ pH_mean + sa_group,
+  data = meta_metab_clean,
+  permutations = 999,
+  by = "margin",                
+  strata = meta_metab_clean$eg_id 
+)
+
+# ---- 3c.3 Integration: Partial Mantel Test --------------
+# *** ADDED THIS SECTION TO FIX THE ERROR ***
+metab_dist_mat <- vegdist(metab_clean, method = "bray")
+sa_dist_metab  <- dist(meta_metab_clean$sa_abundance)
+ph_dist_metab  <- dist(meta_metab_clean$pH_mean)
+
+set.seed(123)
+mantel_metab <- mantel.partial(
+  metab_dist_mat, sa_dist_metab, ph_dist_metab, 
+  method = "spearman", permutations = 999
+)
+
+# ---- 3c.4 Metabolite Richness (LMM) ------------------------
+metab_richness_df <- data.frame(
+  richness     = rowSums(metab_clean > 0),
+  sa_abundance = meta_metab_clean$sa_abundance,
+  pH_mean      = meta_metab_clean$pH_mean,
+  eg_id        = meta_metab_clean$eg_id,
+  lesional     = meta_metab_clean$lesional
+)
+
+library(lme4)
+library(lmerTest)
+metab_rich_lmm <- lmer(richness ~ sa_abundance + pH_mean + (1|eg_id), 
+                       data = metab_richness_df)
+metab_rich_summary <- summary(metab_rich_lmm)
+metab_p_val <- metab_rich_summary$coefficients["sa_abundance", "Pr(>|t|)"]
+
+# ---- 3c.5 Save Results & Visualization ------------------
+
+# 1. Save Text Report
+sink("~/Desktop/Research_Project/Scripts/Integration/SA_Effect/Metabolite_Results.txt")
+cat("SECTION 3C: METABOLITE DATA RESULTS\n")
+cat("Final N =", nrow(meta_metab_clean), "\n\n")
+cat("--- 1. METABOLITE PERMANOVA ---\n")
+print(permanova_metab)
+cat("\n--- 2. METABOLITE PARTIAL MANTEL (SA vs Metabolites | pH) ---\n")
+print(mantel_metab)
+cat("\n--- 3. METABOLITE RICHNESS LMM ---\n")
+print(metab_rich_summary)
+sink()
+
+# 2. Generate Plots
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+
+p_metab_rich_sa <- ggplot(metab_richness_df, aes(x = sa_abundance, y = richness)) +
+  geom_point(size = 3, alpha = 0.7, color = "darkgreen") +
+  geom_smooth(method = "lm", se = TRUE, colour = "darkgreen") +
+  stat_cor(method = "spearman", label.y.npc = "top") +
+  labs(title = "Metabolite Richness vs SA",
+       subtitle = paste("LMM Adjusted p =", format(metab_p_val, digits = 3)),
+       x = "SA Abundance (%)", y = "Number of Metabolites") +
+  theme_classic()
+
+p_metab_rich_ph <- ggplot(metab_richness_df, aes(x = pH_mean, y = richness, colour = lesional)) +
+  geom_point(size = 3) +
+  geom_smooth(method = "lm", se = TRUE, colour = "black", linetype = "dashed") +
+  scale_colour_manual(values = c("LES" = "#E41A1C", "NON_LES" = "#377EB8")) +
+  labs(title = "Metabolite Richness vs Skin pH",
+       x = "pH", y = "Metabolite Richness") +
+  theme_classic()
+
+combined_metab_plot <- p_metab_rich_sa | p_metab_rich_ph
+print(combined_metab_plot)
+
+ggsave("~/Desktop/Research_Project/Scripts/Integration/SA_Effect/metabolite_richness_combined.png",
+       plot = combined_metab_plot, width = 12, height = 5, dpi = 300)
 ```
 
 ## Step 4: MOFA+
 
 MOFA+ finds latent factors between data groups, allowing you to then correlate these factors with SA abundance or lesionality to see if the data types co-vary.
 
-### 4.1. Prepare and Align Data
-
-```{r}
-# Reload with fresh name to avoid any cached state
-load("~/Desktop/iawards/NMR metabolomics/NMR_peakarea_metadata.RData")
-
-# Check the column exists before setting rownames
-head(colnames(NMR_peakarea_metadata))
-head(NMR_peakarea_metadata$NMR_sample_id)
-
-# Notes:
-# - GYECZ1193 BACK excluded - no NMR data (corrected in nmr_shotgun at load time)
-# - GYECZ0776 and GYECZ1111 excluded - no microbiome data
-# - Final aligned dataset: 18 samples
-
-# ------- Prepare NMR metabolomics matrix --------------
-# Set sample IDs as row names and clean metabolite names
-# Remove zero variance species
-rownames(NMR_peakarea_metadata) <- NMR_peakarea_metadata$NMR_sample_id
-NMR_peakarea_metadata$NMR_sample_id <- NULL
-colnames(NMR_peakarea_metadata) <- gsub("'", "", colnames(NMR_peakarea_metadata))
-
-# --------- Prepare species matrix ---------------
-# Transpose so samples are rows, replace P22757 IDs with NMR sample IDs
-species_matched <- t(microbiome)
-rownames(species_matched) <- master_table$NMR_sample_id[
-  match(rownames(species_matched), master_table$sample_id)
-]
-
-# --- Align both matrices to shared samples ---
-keep_samples <- rownames(species_matched)[
-  rownames(species_matched) %in% rownames(NMR_peakarea_metadata)
-]
-
-species_matched <- species_matched[keep_samples, ]
-
-# Remove zero variance species after subsetting to final 18 samples
-species_matched <- species_matched[, apply(species_matched, 2, var) != 0]
-
-nmr_matched <- NMR_peakarea_metadata[keep_samples, ]
-
-# --------- Prepare pathway matrix ---------------  
-pathway_cols <- colnames(pathways)[!colnames(pathways) %in% 
-                                     c("sample", "sample_short")]
-pathway_matched <- master_table[!is.na(master_table$NMR_sample_id), 
-                                 pathway_cols]
-rownames(pathway_matched) <- master_table$NMR_sample_id[
-  !is.na(master_table$NMR_sample_id)]
-pathway_matched <- pathway_matched[keep_samples, ]  # align to same 18 samples
-
-# --------- Prepare meta_matched ----------------- 
-meta_matched <- master_table[!is.na(master_table$NMR_sample_id), ] %>%
-  mutate(
-    TEWL_mean = as.numeric(ifelse(TEWL_mean == "none", NA, TEWL_mean)),
-    pH_mean = as.numeric(ifelse(pH_mean == "none", NA, pH_mean)),
-    days_since_any_topicals = as.numeric(ifelse(days_since_any_topicals == "none", 
-                                                 NA, days_since_any_topicals))
-  ) %>%
-  filter(!is.na(NMR_sample_id))  # explicitly remove any remaining NA sample IDs
-
-rownames(meta_matched) <- meta_matched$NMR_sample_id
-meta_matched <- meta_matched[keep_samples, ]
-
-# Recheck
-nrow(meta_matched)
-# Verify all matrices
-dim(species_matched)                                      # 18 x 44
-dim(nmr_matched)                                          # 18 x 122
-dim(pathway_matched)                                      # 18 x 248
-all(rownames(species_matched) == rownames(pathway_matched)) # TRUE
-all(rownames(species_matched) == rownames(meta_matched))    # TRUE
-```
-
-### 4.2. MOFA+
+### 4.1. MOFA+
 
 ```{r}
 #------- Create MOFA+ Object ------------------
@@ -1130,7 +1388,7 @@ write.csv(factors,
 
 ```
 
-### 4.3. Correlate Factor Scores with S. Aureus Abundance
+### 4.2. Correlate Factor Scores with S. Aureus Abundance
 
 Correlate MOFA+ factor scores with SA abundance to identify which factor tracks with SA.
 
