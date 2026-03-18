@@ -745,6 +745,7 @@ PERMANOVA confirms that the microbiome composition differs by SA high/low.
 Adjusting for effect of pH to ensure the change is from SA and not just due to skin acidity.
 
 ```{r}
+variance_results <- list()
 # --- STEP 1: Get raw data out of Phyloseq ---
 otu_raw <- as.data.frame(t(otu_table(physeq))) # Samples as rows
 meta_raw <- data.frame(sample_data(physeq))
@@ -1214,6 +1215,53 @@ print(combined_metab_plot)
 
 ggsave("~/Desktop/Research_Project/Scripts/Integration/SA_Effect/metabolite_richness_combined.png",
        plot = combined_metab_plot, width = 12, height = 5, dpi = 300)
+```
+
+```{r}
+# Store R2 for plotting
+variance_results$Taxonomy <- data.frame(
+  Level = "Taxonomy",
+  pH_mean = permanova_microbiome["pH_mean", "R2"],
+  sa_group = permanova_microbiome["sa_group", "R2"],
+  Residuals = permanova_microbiome["Residual", "R2"]
+)
+variance_results$Pathways <- data.frame(
+  Level = "Pathways",
+  pH_mean = permanova_pathway["pH_mean", "R2"],
+  sa_group = permanova_pathway["sa_group", "R2"],
+  Residuals = permanova_pathway["Residual", "R2"]
+)
+variance_results$Metabolites <- data.frame(
+  Level = "Metabolites",
+  pH_mean = permanova_metab["pH_mean", "R2"],
+  sa_group = permanova_metab["sa_group", "R2"],
+  Residuals = permanova_metab["Residual", "R2"]
+)
+
+# Combine all results into one table
+final_variance_df <- do.call(rbind, variance_results)
+
+# Transform for ggplot (wide to long)
+library(reshape2)
+plot_df <- melt(final_variance_df, id.vars = "Level", 
+                variable.name = "Source", value.name = "R2")
+
+# Final Plot
+library(ggplot2)
+PERM_variance <- ggplot(plot_df, aes(x = Level, y = R2, fill = Source)) +
+  geom_bar(stat = "identity", color = "white") +
+  theme_minimal() +
+  scale_fill_manual(values = c("pH_mean" = "#69b3a2", 
+                               "sa_group" = "#404080", 
+                               "Residuals" = "#d3d3d3")) +
+  labs(title = "Variance Partitioning Across Multi-Omic Levels",
+       subtitle = "Comparing Microbial, Functional and Metabolomic Signal",
+       y = "Proportion of Variance (R2)",
+       x = "")
+ggsave("~/Desktop/Research_Project/Scripts/Integration/SA_Effect/CombinedPERM_Variances.png",
+       plot = PERM_variance,
+       width = 6, height = 5, dpi = 300, bg="white")
+
 ```
 
 ## Step 4: MOFA+
