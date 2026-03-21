@@ -27,6 +27,8 @@ library(ggrepel)
 library(pheatmap)
 library(lme4)
 library(lmerTest)
+library(compositions)
+
 ```
 
 ### Load Data
@@ -239,7 +241,7 @@ dim(master_table)
 length(unique(master_table$eg_id))         
 table(master_table$lesional)               
 summary(master_table$sa_abundance)         
-colSums(is.na(master_table))               
+colSums(is.na(master_table))              
 ```
 
 ## Step 2: Confounder Checking
@@ -1264,9 +1266,587 @@ ggsave("~/Desktop/Research_Project/Scripts/Integration/SA_Effect/CombinedPERM_Va
 
 ```
 
+### 3d. Beta Dispersion Tests
+
+Beta Dispersion tests to check the robustness of the PERMANOVA results - are the centroids significantly different?
+
+```{r}
+## ----------------------------------------------------------------------------
+# =========================================================
+# BETA DISPERSION TESTS + ORDINATION BIPLOTS
+# Runs after each PERMANOVA to test whether group differences
+# reflect centroid separation (real composition difference)
+# vs dispersion difference (one group is more variable).
+# Plotted as PCoA biplot coloured by SA high vs low.
+#
+# Sections:
+#   A. Microbiome  - uses bray_dist_final + meta_final
+#   B. Pathways    - uses pw_dist_mat   + final_metadata
+#   C. Metabolites - uses metab_dist_mat + meta_metab_clean
+# =========================================================
+
+
+## ----------------------------------------------------------------------------
+# ---- Helper: make biplot from betadisper object ----
+# Reused for all three views to keep code DRY.
+# Returns a ggplot object.
+
+plot_betadisper_biplot <- function(bd_obj, meta_df, group_col,
+                                   title, bd_p, permanova_r2,
+                                   colours = c(SA_high = "#404080",
+                                               SA_low  = "#69b3a2")) {
+  
+  # Extract PCoA coordinates from betadisper
+  scores_df <- as.data.frame(scores(bd_obj, display = "sites"))
+  scores_df$group     <- meta_df[[group_col]][
+    match(rownames(scores_df), rownames(meta_df))]
+  scores_df$sample_id <- rownames(scores_df)
+  
+  # Centroid coordinates
+  centroids_df <- as.data.frame(bd_obj$centroids)
+  centroids_df$group <- rownames(centroids_df)
+  
+  # Variance explained by each PCoA axis
+  eig      <- bd_obj$eig
+  eig_pos  <- eig[eig > 0]
+  pct      <- round(eig[1:2] / sum(eig_pos) * 100, 1)
+  
+  # Dispersion (average distance to centroid) per group
+  disp_vals <- tapply(bd_obj$distances, bd_obj$group, mean)
+  disp_label <- paste0(
+    names(disp_vals), ": ",
+    round(disp_vals, 3), collapse = "   "
+  )
+  
+  ggplot() +
+    # Spider lines: sample to its centroid
+    geom_segment(
+      data = scores_df,
+      aes(x    = PCoA1, y = PCoA2,
+          xend = centroids_df$PCoA1[match(group, centroids_df$group)],
+          yend = centroids_df$PCoA2[match(group, centroids_df$group)],
+          colour = group),
+      alpha = 0.35, linewidth = 0.4
+    ) +
+    # Sample points
+    geom_point(
+      data = scores_df,
+      aes(x = PCoA1, y = PCoA2, colour = group, fill = group),
+      size = 3, shape = 21, colour = "white", stroke = 0.6
+    ) +
+    # Centroid points (larger, filled)
+    geom_point(
+      data = centroids_df,
+      aes(x = PCoA1, y = PCoA2, fill = group),
+      size = 5, shape = 23, colour = "black", stroke = 0.8
+    ) +
+    # 95% ellipse around each group
+    stat_ellipse(
+      data = scores_df,
+      aes(x = PCoA1, y = PCoA2, colour = group),
+      type = "t", level = 0.95, linewidth = 0.7, linetype = "dashed"
+    ) +
+    scale_colour_manual(values = colours, name = "SA group") +
+    scale_fill_manual(values   = colours, name = "SA group") +
+    labs(
+      title    = title,
+      subtitle = paste0(
+        "PERMANOVA R\u00b2 = ", round(permanova_r2, 3),
+        "   |   Betadispersion p = ", round(bd_p, 3), "\n",
+        "Mean distance to centroid \u2014 ", disp_label
+      ),
+      x = paste0("PCoA1 (", pct[1], "%)"),
+      y = paste0("PCoA2 (", pct[2], "%)")
+    ) +
+    theme_classic() +
+    theme(
+      plot.title    = element_text(size = 14, face = "bold"),
+      plot.subtitle = element_text(size = 10, colour = "grey40"),
+      legend.position = "right"
+    )
+}
+
+
+## ----------------------------------------------------------------------------
+# =========================================================
+# SECTION A: MICROBIOME BETADISPERSION
+# Distance matrix: bray_dist_final
+# Metadata:        meta_final
+# Group:           sa_group  (SA_high / SA_low)
+# =========================================================
+
+# --- A1. Betadispersion test ---
+# Tests H0: groups have equal dispersion (spread around centroid).
+# If p < 0.05: groups differ in variability, not just location.
+# Interpret PERMANOVA result cautiously if this is significant.
+
+set.seed(123)
+bd_micro <- betadisper(bray_dist_final,
+                       group = meta_final$sa_group,
+                       type  = "centroid")   # centroid preferred over median for PCoA
+
+bd_micro_test <- permutest(bd_micro,
+                           permutations = 999,
+                           pairwise     = TRUE)
+
+cat("\n--- Microbiome Betadispersion ---\n")
+print(bd_micro_test)
+
+# Mean distance to centroid per group
+cat("\nMean distance to centroid:\n")
+print(tapply(bd_micro$distances, bd_micro$group, mean))
+
+# Save text results
+sink("~/Desktop/Research_Project/Scripts/Integration/SA_Effect/betadispersion_microbiome.txt")
+cat("MICROBIOME BETADISPERSION\n")
+cat("Distance: Bray-Curtis   |   Group: sa_group\n")
+cat("Permutations: 999\n\n")
+print(bd_micro_test)
+cat("\nMean distance to centroid per group:\n")
+print(tapply(bd_micro$distances, bd_micro$group, mean))
+sink()
+
+# --- A2. Microbiome biplot ---
+# Pull PERMANOVA R2 for sa_group from your existing results
+micro_r2 <- permanova_microbiome["sa_group", "R2"]
+bd_micro_p <- bd_micro_test$tab["Groups", "Pr(>F)"]
+
+p_micro_biplot <- plot_betadisper_biplot(
+  bd_obj       = bd_micro,
+  meta_df      = meta_final,
+  group_col    = "sa_group",
+  title        = "Microbiome composition by SA group (Bray-Curtis PCoA)",
+  bd_p         = bd_micro_p,
+  permanova_r2 = micro_r2
+)
+
+print(p_micro_biplot)
+
+ggsave(
+  "~/Desktop/Research_Project/Scripts/Integration/SA_Effect/microbiome_biplot_sa.png",
+  plot   = p_micro_biplot,
+  width  = 8, height = 6, dpi = 300, bg = "white"
+)
+
+
+## ----------------------------------------------------------------------------
+# =========================================================
+# SECTION B: PATHWAY BETADISPERSION
+# Distance matrix: pw_dist_mat
+# Metadata:        final_metadata
+# Group:           sa_group
+# =========================================================
+
+set.seed(123)
+bd_pathway <- betadisper(pw_dist_mat,
+                         group = final_metadata$sa_group,
+                         type  = "centroid")
+
+bd_pathway_test <- permutest(bd_pathway,
+                             permutations = 999,
+                             pairwise     = TRUE)
+
+cat("\n--- Pathway Betadispersion ---\n")
+print(bd_pathway_test)
+
+cat("\nMean distance to centroid:\n")
+print(tapply(bd_pathway$distances, bd_pathway$group, mean))
+
+sink("~/Desktop/Research_Project/Scripts/Integration/SA_Effect/betadispersion_pathways.txt")
+cat("PATHWAY BETADISPERSION\n")
+cat("Distance: Bray-Curtis   |   Group: sa_group\n")
+cat("Permutations: 999\n\n")
+print(bd_pathway_test)
+cat("\nMean distance to centroid per group:\n")
+print(tapply(bd_pathway$distances, bd_pathway$group, mean))
+sink()
+
+pathway_r2  <- permanova_pathway["sa_group", "R2"]
+bd_pathway_p <- bd_pathway_test$tab["Groups", "Pr(>F)"]
+
+p_pathway_biplot <- plot_betadisper_biplot(
+  bd_obj       = bd_pathway,
+  meta_df      = final_metadata,
+  group_col    = "sa_group",
+  title        = "Pathway composition by SA group (Bray-Curtis PCoA)",
+  bd_p         = bd_pathway_p,
+  permanova_r2 = pathway_r2
+)
+
+print(p_pathway_biplot)
+
+ggsave(
+  "~/Desktop/Research_Project/Scripts/Integration/SA_Effect/pathway_biplot_sa.png",
+  plot   = p_pathway_biplot,
+  width  = 8, height = 6, dpi = 300, bg = "white"
+)
+
+
+## ----------------------------------------------------------------------------
+# =========================================================
+# SECTION C: METABOLITE BETADISPERSION
+# Distance matrix: metab_dist_mat
+# Metadata:        meta_metab_clean
+# Group:           sa_group
+# =========================================================
+
+set.seed(123)
+bd_metab <- betadisper(metab_dist_mat,
+                       group = meta_metab_clean$sa_group,
+                       type  = "centroid")
+
+bd_metab_test <- permutest(bd_metab,
+                           permutations = 999,
+                           pairwise     = TRUE)
+
+cat("\n--- Metabolite Betadispersion ---\n")
+print(bd_metab_test)
+
+cat("\nMean distance to centroid:\n")
+print(tapply(bd_metab$distances, bd_metab$group, mean))
+
+sink("~/Desktop/Research_Project/Scripts/Integration/SA_Effect/betadispersion_metabolites.txt")
+cat("METABOLITE BETADISPERSION\n")
+cat("Distance: Bray-Curtis   |   Group: sa_group\n")
+cat("Permutations: 999\n\n")
+print(bd_metab_test)
+cat("\nMean distance to centroid per group:\n")
+print(tapply(bd_metab$distances, bd_metab$group, mean))
+sink()
+
+metab_r2   <- permanova_metab["sa_group", "R2"]
+bd_metab_p <- bd_metab_test$tab["Groups", "Pr(>F)"]
+
+p_metab_biplot <- plot_betadisper_biplot(
+  bd_obj       = bd_metab,
+  meta_df      = meta_metab_clean,
+  group_col    = "sa_group",
+  title        = "Metabolite composition by SA group (Bray-Curtis PCoA)",
+  bd_p         = bd_metab_p,
+  permanova_r2 = metab_r2
+)
+
+print(p_metab_biplot)
+
+ggsave(
+  "~/Desktop/Research_Project/Scripts/Integration/SA_Effect/metabolite_biplot_sa.png",
+  plot   = p_metab_biplot,
+  width  = 8, height = 6, dpi = 300, bg = "white"
+)
+
+
+## ----------------------------------------------------------------------------
+# ---- Combined panel: all three biplots side by side ----
+
+combined_biplots <- p_micro_biplot / p_pathway_biplot / p_metab_biplot +
+  plot_annotation(
+    title   = "Beta dispersion across omics layers - SA high vs low",
+    theme   = theme(plot.title = element_text(size = 15, face = "bold"))
+  )
+
+ggsave(
+  "~/Desktop/Research_Project/Scripts/Integration/SA_Effect/betadispersion_combined.png",
+  plot   = combined_biplots,
+  width  = 9, height = 18, dpi = 300, bg = "white"
+)
+
+cat("\n========================================================\n")
+cat("Betadispersion complete. Results saved to SA_Effect folder.\n")
+cat("Interpret alongside PERMANOVA:\n")
+cat("  BD p > 0.05 + PERMANOVA p < 0.05 = centroid difference (good)\n")
+cat("  BD p < 0.05 + PERMANOVA p < 0.05 = dispersion confounded\n")
+cat("========================================================\n")
+
+
+## ----------------------------------------------------------------------------
+# =========================================================
+# pH ENVFIT BIPLOTS — all three omics views
+#
+# pH is continuous so betadisper() is not appropriate.
+# Instead we use vegan::envfit() to fit pH as a vector onto
+# the PCoA ordination. The arrow shows the direction of
+# steepest pH increase; its length scales with R2 (strength
+# of association). Points are coloured by pH value.
+#
+# Sections:
+#   A. Microbiome  - PCoA from bray_dist_final + meta_final
+#   B. Pathways    - PCoA from pw_dist_mat     + final_metadata
+#   C. Metabolites - PCoA from metab_dist_mat  + meta_metab_clean
+#
+# Run after betadispersion_biplots.R (reuses bd_* objects for
+# PCoA coordinates — no need to recompute ordinations).
+# =========================================================
+
+
+## ----------------------------------------------------------------------------
+# ---- Helper: pH envfit biplot ----
+# bd_obj     : betadisper object (already computed — reused for PCoA coords)
+# meta_df    : metadata dataframe aligned to distance matrix
+# ph_col     : name of pH column in meta_df (default "pH_mean")
+# dist_mat   : original distance matrix (needed for envfit)
+# title      : plot title string
+# permanova_r2 : R2 for pH from your existing PERMANOVA result
+
+plot_ph_envfit <- function(bd_obj, meta_df, dist_mat,
+                           title, permanova_r2,
+                           ph_col = "pH_mean") {
+
+  # --- PCoA coordinates from betadisper object ---
+  scores_df        <- as.data.frame(scores(bd_obj, display = "sites"))
+  scores_df$pH     <- as.numeric(meta_df[[ph_col]][
+    match(rownames(scores_df), rownames(meta_df))])
+  scores_df$sa_group <- meta_df$sa_group[
+    match(rownames(scores_df), rownames(meta_df))]
+
+  # --- Variance explained ---
+  eig     <- bd_obj$eig
+  eig_pos <- eig[eig > 0]
+  pct     <- round(eig[1:2] / sum(eig_pos) * 100, 1)
+
+  # --- envfit: fit pH vector onto the PCoA space ---
+  # Uses only complete pH observations
+  complete_idx <- !is.na(scores_df$pH)
+  env_data     <- data.frame(pH = scores_df$pH[complete_idx])
+
+  set.seed(123)
+  ef <- envfit(
+    scores_df[complete_idx, c("PCoA1", "PCoA2")],
+    env_data,
+    permutations = 999,
+    na.rm        = TRUE
+  )
+
+  # Extract arrow endpoint (scaled by R2 for visual weight)
+  arrow_scale  <- 0.4   # adjust if arrow too long/short for your data range
+  ef_scores    <- as.data.frame(scores(ef, display = "vectors"))
+  ef_scores$r2 <- ef$vectors$r
+  ef_scores$p  <- ef$vectors$pvals
+  ef_scores$label <- paste0("pH  R\u00b2=", round(ef_scores$r2, 2),
+                             "  p=", round(ef_scores$p, 3))
+
+  arrow_df <- data.frame(
+    x    = 0,
+    y    = 0,
+    xend = ef_scores$PCoA1 * arrow_scale,
+    yend = ef_scores$PCoA2 * arrow_scale
+  )
+
+  # --- Plot ---
+  ggplot(scores_df, aes(x = PCoA1, y = PCoA2)) +
+    # Points coloured by pH — gradient low (blue) to high (red)
+    geom_point(aes(fill = pH, shape = sa_group),
+               size = 3.5, colour = "white", stroke = 0.6) +
+    scale_fill_gradient2(
+      low      = "#3288BD",
+      mid      = "#FFFFBF",
+      high     = "#D53E4F",
+      midpoint = median(scores_df$pH, na.rm = TRUE),
+      name     = "Skin pH",
+      na.value = "grey70"
+    ) +
+    scale_shape_manual(
+      values = c(SA_high = 21, SA_low = 24),
+      name   = "SA group"
+    ) +
+    # envfit arrow
+    geom_segment(
+      data = arrow_df,
+      aes(x = x, y = y, xend = xend, yend = yend),
+      arrow     = arrow(length = unit(0.25, "cm"), type = "closed"),
+      colour    = "black", linewidth = 0.8
+    ) +
+    # Arrow label
+    geom_text(
+      data = arrow_df,
+      aes(x = xend * 1.12, y = yend * 1.12,
+          label = ef_scores$label),
+      size = 3.2, hjust = 0.5
+    ) +
+    # Zero crosshairs (light reference lines)
+    geom_hline(yintercept = 0, colour = "grey80", linewidth = 0.3) +
+    geom_vline(xintercept = 0, colour = "grey80", linewidth = 0.3) +
+    labs(
+      title    = title,
+      subtitle = paste0(
+        "PERMANOVA R\u00b2 for pH = ", round(permanova_r2, 3),
+        "   |   envfit R\u00b2 = ", round(ef_scores$r2, 2),
+        "   p = ", round(ef_scores$p, 3)
+      ),
+      x = paste0("PCoA1 (", pct[1], "%)"),
+      y = paste0("PCoA2 (", pct[2], "%)")
+    ) +
+    theme_classic() +
+    theme(
+      plot.title    = element_text(size = 14, face = "bold"),
+      plot.subtitle = element_text(size = 10, colour = "grey40"),
+      legend.position = "right"
+    ) +
+    guides(
+      fill  = guide_colorbar(order = 1, barwidth = 0.8, barheight = 5),
+      shape = guide_legend(order = 2,
+                           override.aes = list(fill = "grey50", size = 3))
+    )
+}
+
+
+## ----------------------------------------------------------------------------
+# =========================================================
+# SECTION A: MICROBIOME — pH biplot
+# Reuses bd_micro (from betadispersion_biplots.R)
+# =========================================================
+
+micro_ph_r2 <- permanova_microbiome["pH_mean", "R2"]
+
+p_micro_ph <- plot_ph_envfit(
+  bd_obj       = bd_micro,
+  meta_df      = meta_final,
+  dist_mat     = bray_dist_final,
+  title        = "Microbiome composition — pH gradient (Bray-Curtis PCoA)",
+  permanova_r2 = micro_ph_r2
+)
+
+print(p_micro_ph)
+
+ggsave(
+  "~/Desktop/Research_Project/Scripts/Integration/SA_Effect/microbiome_biplot_pH.png",
+  plot  = p_micro_ph,
+  width = 8, height = 6, dpi = 300, bg = "white"
+)
+
+
+## ----------------------------------------------------------------------------
+# =========================================================
+# SECTION B: PATHWAYS — pH biplot
+# Reuses bd_pathway (from betadispersion_biplots.R)
+# =========================================================
+
+pathway_ph_r2 <- permanova_pathway["pH_mean", "R2"]
+
+p_pathway_ph <- plot_ph_envfit(
+  bd_obj       = bd_pathway,
+  meta_df      = final_metadata,
+  dist_mat     = pw_dist_mat,
+  title        = "Pathway composition — pH gradient (Bray-Curtis PCoA)",
+  permanova_r2 = pathway_ph_r2
+)
+
+print(p_pathway_ph)
+
+ggsave(
+  "~/Desktop/Research_Project/Scripts/Integration/SA_Effect/pathway_biplot_pH.png",
+  plot  = p_pathway_ph,
+  width = 8, height = 6, dpi = 300, bg = "white"
+)
+
+
+## ----------------------------------------------------------------------------
+# =========================================================
+# SECTION C: METABOLITES — pH biplot
+# Reuses bd_metab (from betadispersion_biplots.R)
+# =========================================================
+
+metab_ph_r2 <- permanova_metab["pH_mean", "R2"]
+
+p_metab_ph <- plot_ph_envfit(
+  bd_obj       = bd_metab,
+  meta_df      = meta_metab_clean,
+  dist_mat     = metab_dist_mat,
+  title        = "Metabolite composition — pH gradient (Bray-Curtis PCoA)",
+  permanova_r2 = metab_ph_r2
+)
+
+print(p_metab_ph)
+
+ggsave(
+  "~/Desktop/Research_Project/Scripts/Integration/SA_Effect/metabolite_biplot_pH.png",
+  plot  = p_metab_ph,
+  width = 8, height = 6, dpi = 300, bg = "white"
+)
+
+
+## ----------------------------------------------------------------------------
+# ---- Combined: SA biplot + pH biplot side by side per view ----
+# Useful for figures — shows both variables on the same ordination space
+
+combined_micro  <- p_micro_biplot  | p_micro_ph
+combined_pw     <- p_pathway_biplot | p_pathway_ph
+combined_metab  <- p_metab_biplot  | p_metab_ph
+
+ggsave(
+  "~/Desktop/Research_Project/Scripts/Integration/SA_Effect/microbiome_SA_pH_combined.png",
+  plot  = combined_micro,
+  width = 16, height = 6, dpi = 300, bg = "white"
+)
+
+ggsave(
+  "~/Desktop/Research_Project/Scripts/Integration/SA_Effect/pathway_SA_pH_combined.png",
+  plot  = combined_pw,
+  width = 16, height = 6, dpi = 300, bg = "white"
+)
+
+ggsave(
+  "~/Desktop/Research_Project/Scripts/Integration/SA_Effect/metabolite_SA_pH_combined.png",
+  plot  = combined_metab,
+  width = 16, height = 6, dpi = 300, bg = "white"
+)
+
+cat("\n========================================================\n")
+cat("pH envfit biplots complete.\n")
+cat("Individual plots saved to SA_Effect folder.\n")
+cat("Combined SA+pH panels also saved per omic layer.\n")
+cat("\nNote: envfit R2 and PERMANOVA R2 will differ slightly —\n")
+cat("envfit fits onto existing PCoA axes; PERMANOVA partitions\n")
+cat("total multivariate variance. Both are valid to report.\n")
+cat("========================================================\n")
+```
+
 ## Step 4: MOFA+
 
 MOFA+ finds latent factors between data groups, allowing you to then correlate these factors with SA abundance or lesionality to see if the data types co-vary.
+
+### Data Preprocessing
+
+```{r}
+# =========================================================
+# FINAL VALIDATED PREPROCESSING — ready to run
+# All checks passed:
+#   Microbiome: 87% zeros, skewed -> CLR justified
+#   NMR: row sums 12-31 -> PQN + log1p justified  
+#   Pathways: TSS already applied -> no further steps
+#   pH: rho < 0.3 in all views -> no regression needed
+#   Outliers: GYECZ1187 biological not technical -> retain
+# =========================================================
+
+
+# 1. Microbiome: CLR
+species_clr <- as.data.frame(clr(species_matched_mofa + 0.5))
+rownames(species_clr) <- rownames(species_matched_mofa)
+species_clr <- species_clr[, apply(species_clr, 2, var) > 0]
+
+# 2. NMR: PQN + log1p
+nmr_pqn   <- pqn_normalise(nmr_matched_mofa)
+nmr_final <- as.data.frame(log1p(nmr_pqn))
+rownames(nmr_final) <- rownames(nmr_matched_mofa)
+
+# 3. Pathways: already prepared as pathway_matched_mofa_reduced
+
+# 4. Final alignment check
+stopifnot(all(rownames(species_clr) == rownames(nmr_final)))
+stopifnot(all(rownames(species_clr) == rownames(pathway_matched_mofa_reduced)))
+cat("All views aligned — ready for MOFA+\n")
+
+# 5. Build MOFA data list
+mofa_data <- list(
+  species     = t(as.matrix(species_clr)),
+  metabolites = t(as.matrix(nmr_final)),
+  pathways    = t(as.matrix(pathway_matched_mofa_reduced))
+)
+
+lapply(mofa_data, dim)
+# species:     ~44 x 17
+# metabolites:  38 x 17
+# pathways:     50 x 17
+```
 
 ### 4.1. MOFA+
 
@@ -1360,7 +1940,7 @@ saveRDS(mofa_obj,
 
 ```{r}
 # ------- Visualisations -----------------
-#mofa_obj <- readRDS("~/Desktop/Research_Project/Scripts/Integration/mofa_model.rds")
+#mofa_obj <- readRDS("~/Desktop/Research_Project/Scripts/Integration/mofa_model_3view_top50.rds")
 # Check the trained model
 print(mofa_obj)
 
