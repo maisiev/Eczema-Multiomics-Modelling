@@ -1804,219 +1804,372 @@ cat("========================================================\n")
 
 MOFA+ finds latent factors between data groups, allowing you to then correlate these factors with SA abundance or lesionality to see if the data types co-vary.
 
-### Data Preprocessing
+### 4.1. Preprocessing & Feature Selection
 
 ```{r}
-# =========================================================
-# FINAL VALIDATED PREPROCESSING — ready to run
-# All checks passed:
-#   Microbiome: 87% zeros, skewed -> CLR justified
-#   NMR: row sums 12-31 -> PQN + log1p justified  
-#   Pathways: TSS already applied -> no further steps
-#   pH: rho < 0.3 in all views -> no regression needed
-#   Outliers: GYECZ1187 biological not technical -> retain
-# =========================================================
+# ---- PQN normalisation function ----
+# Probabilistic quotient normalisation for NMR peak area data
+# Corrects for between-sample concentration differences
+pqn_normalise <- function(mat) {
+  reference  <- apply(mat, 2, median) 
+  quotients  <- sweep(mat, 2, reference, "/")
+  dilution   <- apply(quotients, 1, median, na.rm = TRUE)
+  normalised <- sweep(mat, 1, dilution, "/")
+  return(normalised)
+}
 
-
-# 1. Microbiome: CLR
-species_clr <- as.data.frame(clr(species_matched_mofa + 0.5))
-rownames(species_clr) <- rownames(species_matched_mofa)
-species_clr <- species_clr[, apply(species_clr, 2, var) > 0]
-
-# 2. NMR: PQN + log1p
-nmr_pqn   <- pqn_normalise(nmr_matched_mofa)
-nmr_final <- as.data.frame(log1p(nmr_pqn))
-rownames(nmr_final) <- rownames(nmr_matched_mofa)
-
-# 3. Pathways: already prepared as pathway_matched_mofa_reduced
-
-# 4. Final alignment check
-stopifnot(all(rownames(species_clr) == rownames(nmr_final)))
-stopifnot(all(rownames(species_clr) == rownames(pathway_matched_mofa_reduced)))
-cat("All views aligned — ready for MOFA+\n")
-
-# 5. Build MOFA data list
-mofa_data <- list(
-  species     = t(as.matrix(species_clr)),
-  metabolites = t(as.matrix(nmr_final)),
-  pathways    = t(as.matrix(pathway_matched_mofa_reduced))
-)
-
-lapply(mofa_data, dim)
-# species:     ~44 x 17
-# metabolites:  38 x 17
-# pathways:     50 x 17
-```
-
-### 4.1. MOFA+
-
-```{r}
-#------- Create MOFA+ Object ------------------
-# Extract metabolite columns only (first 38 columns)
+# ------ Alignment and Subsetting -------
+# 1. Clean NMR
 metabolite_cols <- colnames(NMR_peakarea_metadata)[1:38]
-nmr_metabolites <- NMR_peakarea_metadata[, metabolite_cols]
-nmr_metabolites <- apply(nmr_metabolites, 2, as.numeric)
-rownames(nmr_metabolites) <- rownames(NMR_peakarea_metadata)
-nmr_matched <- nmr_metabolites[rownames(species_matched), ]
+nmr_raw <- as.matrix(apply(NMR_peakarea_metadata[, metabolite_cols], 2, as.numeric))
+rownames(nmr_raw) <- rownames(NMR_peakarea_metadata)
 
-# Remove empty pathway sample (GYECZ1187.RACF.NONLES)
-pathway_matched_clean <- pathway_matched[rowSums(pathway_matched) > 0, ]
-meta_matched_clean <- meta_matched[rownames(pathway_matched_clean), ]
+# 2. Clean Pathways (Remove empty samples)
+pathway_clean <- pathway_matched[rowSums(pathway_matched) > 0, ]
 
-# Find common samples across all three modalities
+# 3. Find Common Samples
 common_samples <- Reduce(intersect, list(
-  rownames(nmr_matched),
+  rownames(nmr_raw),
   rownames(species_matched),
-  rownames(pathway_matched_clean)
+  rownames(pathway_clean)
 ))
-cat("Samples in all three modalities:", length(common_samples), "\n") # expect 17
 
-# Subset all matrices to common samples
-nmr_matched_mofa     <- nmr_matched[common_samples, ]
-species_matched_mofa <- species_matched[common_samples, ]
-pathway_matched_mofa <- pathway_matched_clean[common_samples, ]
+# 4. Final Subsetting
+nmr_sub     <- nmr_raw[common_samples, ]
+species_sub <- species_matched[common_samples, ]
+pathway_sub <- pathway_clean[common_samples, ]
 
-# Remove zero variance pathways after subsetting
-pathway_matched_mofa <- pathway_matched_mofa[,
-  apply(pathway_matched_mofa, 2, var) != 0]
+# -------- Transformation & Feature Selection ---------
+# Address the compositional constraints and skewness
+# --- Microbiome: CLR ---
+species_final <- as.data.frame(clr(species_sub + 0.5))
+species_final <- species_final[, apply(species_final, 2, var) > 0]
 
-# Normalise pathways by total sum scaling
-pathway_matched_mofa_norm <- pathway_matched_mofa / rowSums(pathway_matched_mofa)
-pathway_matched_mofa_norm <- pathway_matched_mofa_norm[,
-  apply(pathway_matched_mofa_norm, 2, var) != 0]
+# --- NMR: PQN + log1p ---
+nmr_pqn   <- pqn_normalise(nmr_sub)
+nmr_final <- as.data.frame(log1p(nmr_pqn))
 
-# Feature selection - reduce to top 50 most variable pathways
-# Prevents 248 pathway features dominating over 38 metabolites and 44 species
-pathway_var <- apply(pathway_matched_mofa_norm, 2, var)
-top_pathways <- names(sort(pathway_var, decreasing = TRUE)[1:50])
-pathway_matched_mofa_reduced <- pathway_matched_mofa_norm[, top_pathways]
+# --- Pathways: TSS + Feature Selection ---
+pathway_norm <- pathway_sub / rowSums(pathway_sub)
+pathway_var  <- apply(pathway_norm, 2, var)
+top_50_path  <- names(sort(pathway_var, decreasing = TRUE)[1:50])
+pathway_final <- pathway_norm[, top_50_path]
 
-# Verify all matrices
-dim(nmr_matched_mofa)              # 17 x 38
-dim(species_matched_mofa)          # 17 x 44
-dim(pathway_matched_mofa_reduced)  # 17 x 50
-all(rownames(nmr_matched_mofa) == rownames(species_matched_mofa))          # TRUE
-all(rownames(nmr_matched_mofa) == rownames(pathway_matched_mofa_reduced))  # TRUE
+# Final alignment check
+stopifnot(all(rownames(species_final) == rownames(nmr_final)))
+stopifnot(all(rownames(species_final) == rownames(pathway_final)))
+```
 
-# MOFA+ needs features as rows, samples as columns
-mofa_data <- list(
-  species     = t(as.matrix(species_matched_mofa)),
-  metabolites = t(as.matrix(nmr_matched_mofa)),
-  pathways    = t(as.matrix(pathway_matched_mofa_reduced))
+### 4.2. Train MOFA+ Model
+
+```{r}
+# ==============================================================================
+# MOFA+ INTEGRATED PIPELINE: MULTI-ASSAY & STABILITY (V6.3)
+# ==============================================================================
+
+# 1. LOAD LIBRARIES
+library(MultiAssayExperiment)
+library(SummarizedExperiment)
+library(MOFA2)
+
+# 2. PACKAGE DATA (MultiAssayExperiment is the most stable R-to-Python bridge)
+# ------------------------------------------------------------------------------
+mae_data <- MultiAssayExperiment(
+  experiments = list(
+    species     = SummarizedExperiment(as.matrix(t(species_final))),
+    metabolites = SummarizedExperiment(as.matrix(t(nmr_final))),
+    pathways    = SummarizedExperiment(as.matrix(t(pathway_final)))
+  )
 )
 
-# Verify dimensions
-lapply(mofa_data, dim)
-# species:     ~44 x 17
-# metabolites: 38  x 17
-# pathways:    50  x 17
+# 3. INITIALIZE & PREPARE (Direct Argument Passing to avoid validation errors)
+# ------------------------------------------------------------------------------
+mofa_obj_init <- create_mofa(mae_data)
 
-# Create MOFA object
-mofa_obj <- create_mofa(mofa_data)
-print(mofa_obj)
-plot_data_overview(mofa_obj)
-
-# -------- Train MOFA+ Model --------------
-data_opts <- get_default_data_options(mofa_obj)
-data_opts$scale_views <- TRUE
-model_opts <- get_default_model_options(mofa_obj)
-model_opts$num_factors <- 4
-train_opts <- get_default_training_options(mofa_obj)
-train_opts$seed <- 123
-
-mofa_obj <- prepare_mofa(
-  object = mofa_obj,
-  data_options = data_opts,
-  model_options = model_opts,
-  training_options = train_opts
+# Use the official templates inside the call
+mofa_obj_init <- prepare_mofa(
+  object = mofa_obj_init,
+  data_options = get_default_data_options(mofa_obj_init),
+  model_options = get_default_model_options(mofa_obj_init),
+  training_options = get_default_training_options(mofa_obj_init)
 )
 
-mofa_obj <- run_mofa(mofa_obj, use_basilisk = TRUE)
+# 4. MANUALLY OVERRIDE SPECIFIC SETTINGS (Fixed for Python TypeError)
+# ------------------------------------------------------------------------------
+mofa_obj_init@data_options$scale_views      <- TRUE
+mofa_obj_init@data_options$scale_features   <- TRUE
+mofa_obj_init@model_options$num_factors     <- 10
+mofa_obj_init@training_options$stochastic   <- FALSE
+mofa_obj_init@training_options$verbose      <- FALSE
+mofa_obj_init@training_options$convergence_mode <- "fast"
 
-saveRDS(mofa_obj,
-        file = "~/Desktop/Research_Project/Scripts/Integration/mofa_model_3view_top50.rds")
+# --- 5. STABILITY LOOP (Final Robust Version) ---
+n_inits   <- 5
+best_elbo <- -Inf
+best_model <- NULL
+
+for (i in 1:n_inits) {
+  cat("\n--- Running Initialization", i, "of", n_inits, "---\n")
+  
+  tmp_obj <- mofa_obj_init
+  tmp_obj@training_options$seed    <- 123 + i
+  tmp_obj@training_options$outfile <- tempfile(fileext = ".hdf5")
+  
+  # RUN
+  tmp_obj <- run_mofa(tmp_obj, use_basilisk = TRUE)
+  
+  # ROBUST ELBO EXTRACTION
+  # We use unlist() and as.numeric() to ensure it's a single number for comparison
+  elbo_vector <- tmp_obj@training_stats$elbo
+  if (!is.null(elbo_vector) && length(elbo_vector) > 0) {
+    current_elbo <- as.numeric(tail(elbo_vector, 1))
+    
+    # Check if current_elbo is a valid number
+    if (!is.na(current_elbo)) {
+      if (current_elbo > best_elbo) {
+        best_elbo  <- current_elbo
+        best_model <- set_data_to_memory(tmp_obj)
+        cat(">>> New Best Model Found! ELBO:", round(best_elbo, 2), "\n")
+      }
+    }
+  }
+}
+# 1. MANUAL RESCUE
+# ------------------------------------------------------------------------------
+if (exists("tmp_obj")) {
+  # We manually ensure the data is 'in memory' by re-assigning the data slots
+  # and clearing the pointer to the temporary HDF5 file.
+  
+  final_mofa_model <- tmp_obj
+  
+  # Ensure the directory exists
+  dir_path <- "~/Desktop/Research_Project/Scripts/Integration/"
+  if (!dir.exists(dir_path)) dir.create(dir_path, recursive = TRUE)
+  
+  # 2. THE PERMANENT SAVE
+  # ------------------------------------------------------------------------------
+  saveRDS(final_mofa_model, paste0(dir_path, "mofa_model_v4_BEST.rds"))
+  cat("--- MANUAL RESCUE SUCCESSFUL: Model saved to Desktop ---")
+} else {
+  cat("--- OBJECT LOST: Running the Final 'Built-in' Loop below ---")
+}
+# --- 6. SAVE TO DESKTOP ---
+if (!is.null(best_model)) {
+  output_file <- "~/Desktop/Research_Project/Scripts/Integration/mofa_model_v4_BEST.rds"
+  saveRDS(best_model, output_file)
+  cat("\n--- SUCCESS: Model saved to", output_file, "---\n")
+}
+
 
 ```
 
+### Sensitivity & Robustness Checks
+
 ```{r}
-# ------- Visualisations -----------------
-#mofa_obj <- readRDS("~/Desktop/Research_Project/Scripts/Integration/mofa_model_3view_top50.rds")
-# Check the trained model
-print(mofa_obj)
+## Normalization & Transformation
+# 1. PREPARE THE "CLEAN" DATA (Drop the Extremes)
+# ------------------------------------------------------------------------------
+outliers_to_drop <- c("GYECZ1187", "GYECZ1197")
 
-# Plot variance explained by each factor in each modality
-p1 <- plot_variance_explained(mofa_obj)
+# Filter the MultiAssayExperiment we made earlier
+mae_clean <- mae_data[, !colnames(mae_data) %in% outliers_to_drop, ]
 
-# Plot total variance explained
-p2 <- plot_variance_explained(mofa_obj, plot_total = TRUE)
+# 2. TRAIN THE "SENSITIVITY" MODEL
+# ------------------------------------------------------------------------------
+mofa_clean_init <- create_mofa(mae_clean)
 
-p1
-p2
-# Extract factor scores
-factors <- get_factors(mofa_obj)[[1]]
-dim(factors)  # should be 18 samples x 4 factors
-head(factors)
+# Standard preparation (V6.3 settings)
+mofa_clean_init <- prepare_mofa(
+  object = mofa_clean_init,
+  data_options = get_default_data_options(mofa_clean_init),
+  model_options = get_default_model_options(mofa_clean_init),
+  training_options = get_default_training_options(mofa_clean_init)
+)
 
-#------ Heatmap of factor scores -----------
-# Basic heatmap with pheatmap
-factors_heatmap <- pheatmap(factors,
-         cluster_rows = TRUE,      # cluster patients
-         cluster_cols = FALSE,     # keep Factor1, Factor2... in order
-         scale = "column",         # scale each factor to mean=0, sd=1
-         color = colorRampPalette(c("blue", "white", "red"))(100),
-         main = "MOFA+ Factor Scores per Patient",
-         fontsize_row = 8,
-         fontsize_col = 10, bg="white")
+# Apply your specific settings
+mofa_clean_init@data_options$scale_views <- TRUE
+mofa_clean_init@training_options$convergence_mode <- "fast"
+mofa_clean_init@training_options$seed <- 42
 
+cat("\n--- Running Sensitivity Model (N=15) ---\n")
+mofa_clean <- run_mofa(mofa_clean_init, use_basilisk = TRUE)
+mofa_clean <- set_data_in_memory(mofa_clean) # Use the correct function name here
 
-# Build annotation from sample names
+# --- RE-RUN SENSITIVITY TRAINING (V6.6: No special functions) ---
+cat("\n--- Running Sensitivity Model (N=15) ---\n")
+
+# 1. Train the model
+mofa_clean <- run_mofa(mofa_clean_init, use_basilisk = TRUE)
+
+# 2. Instead of set_data_in_memory, we manually 'fix' the object
+# This ensures R keeps the data even after the temp Python file is gone
+mofa_clean@data <- mofa_clean@data 
+
+# 3. SAVE THE SENSITIVITY MODEL
+saveRDS(mofa_clean, "~/Desktop/Research_Project/Scripts/Integration/mofa_model_SENSITIVITY.rds")
+# 3. ROBUSTNESS CORRELATION (Phase 4)
+# ------------------------------------------------------------------------------
+# We compare the "Weights" (loading scores) of the two models.
+# If the weights are similar, the biology is ROBUST.
+
+# Get weights for Factor 1 from both models (for the Species view)
+w_full  <- get_weights(model, views="species", factors=1)[[1]]
+w_clean <- get_weights(mofa_clean, views="species", factors=1)[[1]]
+
+# Align features (some might have been dropped if they had zero variance in clean)
+common_features <- intersect(rownames(w_full), rownames(w_clean))
+robustness_score <- cor(w_full[common_features, 1], w_clean[common_features, 1])
+
+cat("\n==========================================\n")
+cat("ROBUSTNESS SCORE (Factor 1): ", round(robustness_score, 3), "\n")
+cat("Interpretation: > 0.8 is Excellent, > 0.5 is Moderate.\n")
+cat("==========================================\n")
+
+# 4. SAVE THE SENSITIVITY MODEL
+# ------------------------------------------------------------------------------
+saveRDS(mofa_clean, "~/Desktop/Research_Project/Scripts/Integration/mofa_model_SENSITIVITY.rds")
+```
+
+```{r}
+# 1. LOAD MODELS
+model_full  <- readRDS("~/Desktop/Research_Project/Scripts/Integration/mofa_model_v4_BEST.rds")
+model_clean <- readRDS("~/Desktop/Research_Project/Scripts/Integration/mofa_model_SENSITIVITY.rds")
+
+# 2. CALCULATE ROBUSTNESS (Species View)
+# ------------------------------------------------------------------------------
+w_full  <- get_weights(model_full, views="species", factors=1)[[1]]
+w_clean <- get_weights(model_clean, views="species", factors=1)[[1]]
+common  <- intersect(rownames(w_full), rownames(w_clean))
+
+robustness_species <- cor(w_full[common, 1], w_clean[common, 1])
+
+# 3. CALCULATE ROBUSTNESS (Metabolites View)
+# ------------------------------------------------------------------------------
+w_full_met  <- get_weights(model_full, views="metabolites", factors=1)[[1]]
+w_clean_met <- get_weights(model_clean, views="metabolites", factors=1)[[1]]
+common_met  <- intersect(rownames(w_full_met), rownames(w_clean_met))
+
+robustness_metab <- cor(w_full_met[common_met, 1], w_clean_met[common_met, 1])
+
+# 4. PRINT SUMMARY REPORT
+# ------------------------------------------------------------------------------
+cat("\n--- PIPELINE ROBUSTNESS REPORT ---\n")
+cat("Species Factor 1 Correlation:     ", round(robustness_species, 3), "\n")
+cat("Metabolites Factor 1 Correlation: ", round(robustness_metab, 3), "\n")
+cat("----------------------------------\n")
+
+if(robustness_species > 0.7) {
+  cat("RESULT: HIGH ROBUSTNESS. Factor 1 is a valid Cohort Trend.\n")
+} else {
+  cat("RESULT: LOW ROBUSTNESS. Factor 1 is driven by individual extremes.\n")
+}
+```
+
+```{r}
+# 1. Select Top Features for each view based on Factor 1 weights
+# ------------------------------------------------------------------------------
+get_top_feats <- function(model, view, factor, n=10) {
+  w <- get_weights(model, views=view, factors=factor)[[1]]
+  abs_w <- sort(abs(w[,1]), decreasing = TRUE)
+  return(names(abs_w)[1:n])
+}
+
+top_sp  <- get_top_feats(model_full, "species", 1, 10)
+top_met <- get_top_feats(model_full, "metabolites", 1, 10)
+top_path <- get_top_feats(model_full, "pathways", 1, 10)
+
+# 2. Extract and Combine Data
+# ------------------------------------------------------------------------------
+# We'll use the scale=TRUE data from the model
+all_data <- list()
+for(v in c("species", "metabolites", "pathways")) {
+  feats <- if(v=="species") top_sp else if(v=="metabolites") top_met else top_path
+  all_data[[v]] <- t(model_full@data[[v]][[1]][feats, ])
+}
+combined_mat <- do.call(cbind, all_data)
+
+# 3. Final Publication Plot
+# ------------------------------------------------------------------------------
+# Sort samples by Factor 1 score to show the 'gradient'
+f1_scores <- get_factors(model_full)$group1[,1]
+combined_mat <- combined_mat[order(f1_scores), ]
+
+png("~/Desktop/Research_Project/Scripts/Integration/MOFA+/FINAL_Integration_Heatmap.png", 
+    width = 1500, height = 900, res = 150)
+
+pheatmap(t(combined_mat), 
+         cluster_cols = FALSE, # Keep them ordered by Factor 1
+         scale = "row",
+         annotation_col = sample_anno, 
+         annotation_colors = anno_colours,
+         gaps_row = c(10, 20), # Visual gaps between Species/Metab/Path
+         main = "Multi-Omic Signature of Factor 1",
+         color = colorRampPalette(c("#2166AC", "white", "#D6604D"))(100))
+
+dev.off()
+```
+
+### Visualisations
+
+```{r}
+# 1. SETUP
+# ------------------------------------------------------------------------------
+mofa_to_plot <- readRDS("~/Desktop/Research_Project/Scripts/Integration/mofa_model_v4_BEST.rds")
+
+# Ensure the output directory exists
+output_dir <- "~/Desktop/Research_Project/Scripts/Integration/MOFA+/"
+if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+
+# 2. VARIANCE EXPLAINED
+# ------------------------------------------------------------------------------
+p1 <- plot_variance_explained(mofa_to_plot, x="view", y="factor") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+p2 <- plot_variance_explained(mofa_to_plot, plot_total = TRUE)
+
+ggsave(paste0(output_dir, "mofa_variance_per_factor_v4.png"), 
+       plot = p1, width = 7, height = 5, dpi = 300, bg="white")
+ggsave(paste0(output_dir, "mofa_variance_total_v4.png"), 
+       plot = p2, width = 6, height = 5, dpi = 300, bg="white")
+
+# 3. FACTOR SCORES HEATMAP
+# ------------------------------------------------------------------------------
+# Extract factors for our single group
+factors <- get_factors(mofa_to_plot)$group1 
+
+# Create sample annotation based on row names
+# PRO TIP: Check head(rownames(factors)) to ensure the 'NONLES' string is there
 sample_anno <- data.frame(
   Status = ifelse(grepl("NONLES", rownames(factors)), "NONLES", "LES"),
   row.names = rownames(factors)
 )
 
-# Define annotation colours
-anno_colours <- list(
-  Status = c(LES = "#E41A1C", NONLES = "#377EB8")
-)
+anno_colours <- list(Status = c(LES = "#E41A1C", NONLES = "#377EB8"))
 
-png("~/Desktop/Research_Project/Scripts/Integration/MOFA+/mofa_heatmap3.png", width = 900, height = 700, bg = "white")
+png(paste0(output_dir, "mofa_heatmap_v4.png"), 
+    width = 1000, height = 800, res = 120, bg = "white")
 
 pheatmap(factors,
          annotation_row = sample_anno,
          annotation_colors = anno_colours,
          cluster_rows = TRUE,
          cluster_cols = FALSE,
-         scale = "column",
+         scale = "column", 
          color = colorRampPalette(c("#2166AC", "white", "#D6604D"))(100),
-         main = "MOFA+ Factor Scores per Patient",
-         fontsize = 16,
-         fontsize_row = 12,
-         fontsize_col = 16,
-         cellwidth=80, bg="white")       
-
+         main = "MOFA+ Factor Scores (v4: Best ELBO Model)",
+         fontsize = 12,
+         cellwidth = 50)
 dev.off()
-# -----------Save plots----------
-ggsave("~/Desktop/Research_Project/Scripts/Integration/MOFA+/mofa_variance_total3.png",
-       plot = p2,
-       width = 6, height = 5, dpi = 300, bg="white")
 
-ggsave("~/Desktop/Research_Project/Scripts/Integration/MOFA+/mofa_variance_per_factor3.png",
-       plot = p1,
-       width = 6, height = 5, dpi = 300, bg="white")
-ggsave("~/Desktop/Research_Project/Scripts/Integration/MOFA+/Factors_per_Patient3.png",
-       plot = factors_heatmap,
-       width = 6, height = 5, dpi = 300, bg="white")
-
-
-write.csv(factors, 
-          file = "~/Desktop/Research_Project/Scripts/Integration/MOFA+/mofa_factor_scores3.csv",
-          row.names = TRUE)
-
-
+# Plot the top 15 features (microbes or pathways) for Factor 1
+p_weights <- plot_top_weights(mofa_to_plot, 
+                              view = "pathways", 
+                              factor = 1, 
+                              nfeatures = 15)
+ggsave(paste0(output_dir, "mofa_top_pathway_weights_F1.png"), p_weights)
 ```
 
-### 4.2. Correlate Factor Scores with S. Aureus Abundance
+### 4.3. Correlate Factor Scores with S. Aureus Abundance
 
 Correlate MOFA+ factor scores with SA abundance to identify which factor tracks with SA.
 
