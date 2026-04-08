@@ -2200,6 +2200,8 @@ for (i in 1:n_inits) {
 ### Visualisations
 
 ```{r}
+
+
 # 1. SETUP
 # ------------------------------------------------------------------------------
 mofa_to_plot <- readRDS("~/Desktop/Research_Project/Scripts/Integration/mofa_model_v4_BEST.rds")
@@ -3028,6 +3030,21 @@ for (cluster in all_clusters) {
 ### Visualisations
 
 ```{r}
+master_table <- master_table %>%
+  mutate(SA_status = case_when(
+    sa_abundance > 35 ~ "High",
+    sa_abundance < 10 ~ "Low",
+    TRUE ~ NA_character_  # Samples in the 10-35% range become NA
+  ))
+load("~/Desktop/iawards/metadata/seq_metadata_filt.RData")
+
+target_ids <- c("A17", "A18", "A21", "A22", "A37", "A38")
+
+bridge_clean <- as.data.frame(seq_metadata_filt) %>%
+  mutate(scRNA_ID = regmatches(as.character(seq_id), regexpr("A[0-9]+", as.character(seq_id)))) %>%
+  filter(scRNA_ID %in% target_ids) %>%
+  select(scRNA_ID, eg_id) %>%
+  distinct()
 
 #------- VOLCANO PLOTS----------------
 library(ggplot2)
@@ -3093,6 +3110,13 @@ for (file in deg_files) {
 # This creates the 'data' layer that DotPlot is looking for
 adata_qc <- NormalizeData(adata_qc, normalization.method = "LogNormalize", scale.factor = 10000)
 
+gene_sets <- list(
+  "Antimicrobial Genes" = c("SLPI", "S100A8", "S100A9", "DEFB4A", "CAMP"),
+  "Barrier_Function Genes" = c("FLG", "LOR", "KRT1", "KRT10", "LCE3E"),
+  "Inflammation Genes" = c("CCL19", "CCL4", "IL1B", "CXCL8", "TNF"),
+  "Antigen_Presentation Genes" = c("CD1A", "CD1C", "HLA-DRA", "CD74")
+)
+
 # 1. Combine all your genes of interest into one small list
 genes_to_plot <- unique(unlist(gene_sets))
 
@@ -3104,12 +3128,7 @@ adata_qc <- ScaleData(adata_qc, features = genes_to_plot)
 # (The loop code remains exactly the same as before)
 
 # 1. Define Gene Sets relevant to S. aureus and Atopic Dermatitis
-gene_sets <- list(
-  "Antimicrobial Genes" = c("SLPI", "S100A8", "S100A9", "DEFB4A", "CAMP"),
-  "Barrier_Function Genes" = c("FLG", "LOR", "KRT1", "KRT10", "LCE3E"),
-  "Inflammation Genes" = c("CCL19", "CCL4", "IL1B", "CXCL8", "TNF"),
-  "Antigen_Presentation Genes" = c("CD1A", "CD1C", "HLA-DRA", "CD74")
-)
+
 
 # 2. Create an output folder
 plot_dir <- "~/Desktop/Research_Project/Scripts/DEGs/DotPlots/"
@@ -3173,23 +3192,41 @@ for (set_name in names(gene_sets)) {
 
 
 # ----- Gene Correlation with SA-------------
+
 library(reshape2)
-# 1. Define clusters
-# these clusters had significant genes in the volcano plots # 1. Use the EXACT names as they appear in your CSV filenames
+library(dplyr)
+library(ggplot2)
+
+# 1. Setup Directories
+main_dir <- "~/Desktop/Research_Project/Scripts/DEGs/Correlation_Results/"
+if (!dir.exists(main_dir)) dir.create(main_dir, recursive = TRUE)
+
+# 2. Define the exact clusters of interest
 power_clusters <- c("IFE C", "OB", "KER1", "IFE B", "T CELL")
 
-main_dir <- "~/Desktop/Research_Project/Scripts/DEGs/Correlation_Results/"
-if (!dir.exists(main_dir)) dir.create(main_dir)
+# 3. Create the Mapping Data Frame from master_table
+# We still use relationship = "many-to-many" because one eg_id (Patient) 
+# has multiple microbiome samples in master_table, but we've restricted 
+# the 'y' side to only your 6 target single-cell samples.
+s_aureus_map <- master_table %>%
+  mutate(eg_id = as.character(eg_id)) %>%
+  left_join(bridge_clean, by = "eg_id", relationship = "many-to-many") %>%
+  select(sample = scRNA_ID, 
+         s_aureus = sa_abundance, 
+         SA_status = SA_status) %>%
+  filter(!is.na(sample)) %>% 
+  distinct()
 
-
+# 4. Main Correlation Loop
 for (cluster in power_clusters) {
   
-  # Clean the name for folder/file creation (replace spaces with underscores for the OS)
+  message("--- Processing Cluster: ", cluster, " ---")
+  
   clean_cluster <- gsub(" ", "_", cluster)
   cluster_dir <- paste0(main_dir, clean_cluster, "/")
   if (!dir.exists(cluster_dir)) dir.create(cluster_dir)
   
-  # Load the specific DEG results (Looking for the CSV you saved earlier)
+  # Load DEG results
   file_path <- paste0("~/Desktop/Research_Project/Scripts/DEGs/DEG_Results_", clean_cluster, ".csv")
   if (!file.exists(file_path)) {
     message("File not found: ", file_path)
@@ -3199,109 +3236,231 @@ for (cluster in power_clusters) {
   res_df <- read.csv(file_path, row.names = 1)
   top_5_genes <- head(rownames(res_df[order(res_df$padj), ]), 5)
   
-  # Find columns in 'mat' for this cluster
-  # This search is specific: it looks for the cluster name followed by an underscore
-  cluster_cols <- grep(paste0("^", cluster, "_"), colnames(mat))
+  # Find columns in pseudobulk matrix 'mat'
+  cluster_cols <- grep(paste0("^", cluster, "_"), colnames(mat), value = TRUE)
   
   if (length(cluster_cols) == 0) {
-    message("Still can't find columns for: ", cluster)
+    message("No columns found in 'mat' for: ", cluster)
     next
   }
 
   for (gene in top_5_genes) {
-    # Check if gene exists in the matrix
     if (!gene %in% rownames(mat)) next
     
     sample_expr <- mat[gene, cluster_cols]
     
-    # Safety check for variation
+    # Skip genes with no variation (prevents math errors)
     if (sum(sample_expr) == 0 || sd(sample_expr) == 0) next
 
+    # Build plotting data
     plot_data <- data.frame(
       Expression = as.numeric(sample_expr),
       Full_Name = names(sample_expr)
     )
     
-    # Extract Patient ID (A17, A18, etc.)
+    # Extract ID and map metadata
     plot_data$Sample_ID <- regmatches(plot_data$Full_Name, regexpr("A[0-9]+", plot_data$Full_Name))
-    plot_data$S_aureus <- s_aureus_map$s_aureus[match(plot_data$Sample_ID, s_aureus_map$sample)]
-    plot_data$Status <- ifelse(grepl("non-les", plot_data$Full_Name), "Non-Lesional", "Lesional")
+    plot_data$S_aureus  <- s_aureus_map$s_aureus[match(plot_data$Sample_ID, s_aureus_map$sample)]
+    plot_data$SA_Group  <- s_aureus_map$SA_status[match(plot_data$Sample_ID, s_aureus_map$sample)]
+    plot_data$Status    <- ifelse(grepl("non-les", plot_data$Full_Name), "Non-Lesional", "Lesional")
     
-    r_val <- round(cor(plot_data$S_aureus, plot_data$Expression, method="spearman"), 2)
+    # CRITICAL: Skip if mapping failed to prevent "non-finite" viewport error
+    if (all(is.na(plot_data$S_aureus))) {
+      message("Skipping ", gene, ": No matching S. aureus data for these IDs.")
+      next
+    }
+
+    r_val <- round(cor(plot_data$S_aureus, plot_data$Expression, method="spearman", use="complete.obs"), 2)
     
+    # Create Plot - Color-coded by your strict High/Low Status
     p <- ggplot(plot_data, aes(x = S_aureus, y = Expression)) +
-      geom_point(aes(color = Status), size = 6) +
-      geom_smooth(method = "lm", color = "black", se = FALSE, linetype = "dashed") +
+      geom_smooth(method = "lm", color = "black", se = FALSE, linetype = "dashed", alpha = 0.5) +
+      geom_point(aes(color = SA_Group, shape = Status), size = 6) +
       annotate("label", x = -Inf, y = Inf, label = paste("Spearman r =", r_val), 
                hjust = -0.1, vjust = 1.5, size = 5, fontface = "bold", fill = "white") +
+      scale_color_manual(values = c("High" = "#D55E00", "Low" = "#56B4E9"), na.value = "grey70") +
       theme_bw() +
       theme(panel.grid = element_blank()) +
       labs(title = paste(cluster, "| Gene:", gene),
-           x = "S. aureus Load", y = "Log-Normalised Expression") +
-      scale_color_manual(values = c("Lesional" = "#e41a1c", "Non-Lesional" = "#377eb8"))
+           subtitle = "S. Aureus Thresholds: High >35%, Low <10%",
+           x = "S. aureus Abundance (%)", 
+           y = "Log-Normalised Expression",
+           color = "SA Status")
 
     ggsave(filename = paste0(cluster_dir, "Correlation_", gene, ".png"), 
-           plot = p, width = 6, height = 5, dpi = 300)
+           plot = p, width = 7, height = 5, dpi = 300)
   }
 }
 
 
-# Running most highly correlated gene SLPI with other clusters to see its effect everywherew
-# 1. Define the clusters to check for SLPI
-slpi_clusters <- c("IFE C", "IFE B", "KER1", "OB", "T CELL")
-target_gene <- "SLPI"
 
-# 2. Create a dedicated folder for this analysis
-deep_dive_dir <- "~/Desktop/Research_Project/Scripts/DEGs/SLPI_Deep_Dive/"
-if (!dir.exists(deep_dive_dir)) dir.create(deep_dive_dir)
 
-# 3. Run the targeted loop
-for (cluster in slpi_clusters) {
-  
-  # Find columns in 'mat' for this cluster
-  cluster_cols <- grep(paste0("^", cluster, "_"), colnames(mat))
-  
-  if (length(cluster_cols) == 0) {
-    message("Cluster columns not found for: ", cluster)
-    next
-  }
-  
-  # Extract expression for SLPI
-  sample_expr <- mat[target_gene, cluster_cols]
-  
-  # Build plot data
-  plot_data <- data.frame(
-    Expression = as.numeric(sample_expr),
-    Full_Name = names(sample_expr)
+
+
+
+
+
+# 1. Create a clean metadata dataframe to add
+# This links the 'orig.ident' in Seurat to the 'SA_status' in your map
+metadata_to_add <- s_aureus_map %>%
+  select(sample, SA_status) %>%
+  distinct()
+
+# 2. Match the rows correctly to the Seurat object
+# We pull the 'orig.ident' from the Seurat metadata and match it to our map
+new_metadata_column <- metadata_to_add$SA_status[match(adata_qc$orig.ident, metadata_to_add$sample)]
+
+# 3. Add it into the Seurat object
+adata_qc$SA_status <- new_metadata_column
+
+# 4. Verification: You should see 'High', 'Low', and 'NA' here
+table(adata_qc$SA_status, useNA = "always")
+
+
+# 1. Define your top correlated genes
+correlation_stars <- c("LINC01128", "AL627309.5", "AL627309.1", "SLPI")
+
+# 2. Filter your Seurat object to only include High/Low samples
+# This ensures the Dot Plot matches the 'extremes' logic of your correlation plots
+adata_subset <- subset(adata_qc, subset = SA_status %in% c("High", "Low"))
+
+# 1. Ensure the labels are descriptive
+# This combines the Cluster and the SA status for the X-axis
+adata_subset$plot_group <- paste0(adata_subset$clusters, " (", adata_subset$SA_status, ")")
+
+# 2. Generate the plot
+p <- DotPlot(adata_subset, 
+             features = correlation_stars, 
+             group.by = "plot_group", 
+             cols = c("lightgrey", "#D55E00")) + # Using a gradient toward your High-SA Orange
+  coord_flip() +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 10)) +
+  labs(title = "S. aureus Dose-Response & Lesionality",
+       subtitle = "Comparing High (>35%) vs Low (<10%) SA across all clusters",
+       x = "Candidate Genes",
+       y = "Cluster & SA Status",
+       color = "Expression Intensity")
+
+# 3. Add a manual legend for the Status Colors (High/Low)
+# Since Seurat can be tricky with legends, we'll annotate the plot directly
+print(p)
+
+
+# 1. Force a clean 'status' column
+# We check for common ways "Lesional" is stored (1, "1", or "Lesional")
+adata_subset$detailed_status <- "Other" # Default
+
+adata_subset$detailed_status[adata_subset$les %in% c(1, "1", "Lesional")] <- 
+  paste0("Lesional | ", adata_subset$SA_status[adata_subset$les %in% c(1, "1", "Lesional")])
+
+adata_subset$detailed_status[adata_subset$les %in% c(0, "0", "Non-Lesional")] <- 
+  paste0("Non-Lesional | ", adata_subset$SA_status[adata_subset$les %in% c(0, "0", "Non-Lesional")])
+
+# 2. Check the table - YOU SHOULD SEE 4 GROUPS HERE
+print(table(adata_subset$detailed_status))
+
+# 3. Define the full color palette
+full_colors <- c(
+  "Non-Lesional | Low"  = "#56B4E9", # Light Blue
+  "Non-Lesional | High" = "#0072B2", # Dark Blue
+  "Lesional | Low"      = "#009E73", # Green
+  "Lesional | High"     = "#D55E00"  # Orange
+)
+
+# 4. Re-plot
+VlnPlot(adata_subset, 
+        features = c("SLPI", "LINC01128"), 
+        group.by = "clusters", 
+        split.by = "detailed_status", 
+        pt.size = 0,
+        cols = full_colors) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Clinical State vs. Bacterial Load",
+       fill = "State & SA Load")
+
+
+
+# 1. Map based on the exact strings found: "les" and "non_les"
+adata_subset$detailed_status <- "Unknown" 
+
+# Map Lesional cells
+is_lesional <- adata_subset$les == "les"
+adata_subset$detailed_status[is_lesional] <- paste0("Lesional | ", adata_subset$SA_status[is_lesional])
+
+# Map Non-Lesional cells
+is_non_lesional <- adata_subset$les == "non_les"
+adata_subset$detailed_status[is_non_lesional] <- paste0("Non-Lesional | ", adata_subset$SA_status[is_non_lesional])
+
+# 2. Check the table - You should now see the 4 distinct groups!
+print(table(adata_subset$detailed_status))
+
+# 3. Final Plotting
+full_colors <- c(
+  "Non-Lesional | Low"  = "#56B4E9", # Light Blue
+  "Non-Lesional | High" = "#0072B2", # Dark Blue
+  "Lesional | Low"      = "#009E73", # Green
+  "Lesional | High"     = "#D55E00"  # Orange
+)
+
+VlnPlot(adata_subset, 
+        features = c("SLPI", "LINC01128"), 
+        group.by = "clusters", 
+        split.by = "detailed_status", 
+        pt.size = 0,
+        cols = full_colors) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+library(dplyr)
+library(ggplot2)
+
+# 1. Prepare the data: Average expression per cluster per status
+plot_data <- FetchData(adata_subset, vars = c("SLPI", "LINC01128", "clusters", "detailed_status")) %>%
+  group_by(clusters, detailed_status) %>%
+  summarise(
+    mean_SLPI = mean(SLPI),
+    mean_LINC = mean(LINC01128),
+    .groups = 'drop'
   )
-  
-  # Map S. aureus and Status
-  plot_data$Sample_ID <- regmatches(plot_data$Full_Name, regexpr("A[0-9]+", plot_data$Full_Name))
-  plot_data$S_aureus <- s_aureus_map$s_aureus[match(plot_data$Sample_ID, s_aureus_map$sample)]
-  plot_data$Status <- ifelse(grepl("non-les", plot_data$Full_Name), "Non-Lesional", "Lesional")
-  
-  # Calculate Spearman
-  r_val <- round(cor(plot_data$S_aureus, plot_data$Expression, method="spearman"), 2)
-  
-  # Create the Plot
-  p <- ggplot(plot_data, aes(x = S_aureus, y = Expression)) +
-    geom_point(aes(color = Status), size = 6) +
-    geom_smooth(method = "lm", color = "black", se = FALSE, linetype = "dashed") +
-    annotate("label", x = -Inf, y = Inf, label = paste("Spearman r =", r_val), 
-             hjust = -0.1, vjust = 1.5, size = 6, fontface = "bold", fill = "white") +
-    theme_bw() +
-    theme(panel.grid = element_blank(),
-          plot.title = element_text(size = 14, face = "bold")) +
-    labs(title = paste("SLPI Crash in", cluster),
-         subtitle = "Bacterial Load vs. Innate Defense",
-         x = "S. aureus Load", y = "Log-Normalized Expression") +
-    scale_color_manual(values = c("Lesional" = "#e41a1c", "Non-Lesional" = "#377eb8"))
 
-  # Save
-  clean_name <- gsub(" ", "_", cluster)
-  ggsave(filename = paste0(deep_dive_dir, "SLPI_Correlation_", clean_name, ".png"), 
-         plot = p, width = 6, height = 5)
-}
+pdf("~/Desktop/Research_Project/Scripts/DEGs/Correlation_Results/Master/SLPI.pdf", width = 10, height = 7)
+
+# 2. Create the Bar Chart for SLPI (The Defense)
+ggplot(plot_data, aes(x = clusters, y = mean_SLPI, fill = detailed_status)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c(
+    "Non-Lesional | Low"  = "#56B4E9", 
+    "Non-Lesional | High" = "#0072B2", 
+    "Lesional | Low"      = "#009E73", 
+    "Lesional | High"     = "#D55E00"
+  )) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Average SLPI Expression",
+       y = "Mean Log-Normalised Expression",
+       fill = "State & SA Load")
+
+dev.off()
+
+pdf("~/Desktop/Research_Project/Scripts/DEGs/Correlation_Results/Master/LINC.pdf", width = 10, height = 7)
+# Create the Bar Chart for LINC
+ggplot(plot_data, aes(x = clusters, y = mean_LINC, fill = detailed_status)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c(
+    "Non-Lesional | Low"  = "#56B4E9", 
+    "Non-Lesional | High" = "#0072B2", 
+    "Lesional | Low"      = "#009E73", 
+    "Lesional | High"     = "#D55E00"
+  )) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Average LINC01128 Expression",
+       y = "Mean Log-Normalised Expression",
+       fill = "State & SA Load")
+dev.off()
+
 
 ```
 
