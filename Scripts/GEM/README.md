@@ -1,5 +1,5 @@
 ### GEM_01_Data_Loading.ipynd 
-Contains the script to load the relevant data into jupyter notebook and creates one single GEM input file ('gem_input_data.pkl') to be used in the model. 
+Script to load the relevant data into jupyter notebook and creates one single GEM input file ('gem_input_data.pkl') to be used in the model. 
 'gem_input_data.pkl' contains: 
 - metadata (18×16)
 - nmr (18×38)
