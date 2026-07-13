@@ -29,6 +29,7 @@ library(ggrepel)
 library(pheatmap)
 library(lme4)
 library(lmerTest)
+library(mediation)
 library(compositions)
 library(MultiAssayExperiment)
 library(Seurat)
@@ -38,6 +39,23 @@ library(magrittr)
 library(DESeq2)
 library(fgsea)
 library(msigdbr)
+library(tidyr)
+library(knitr)
+```
+
+```{r}
+
+pkgs <- c("readxl", "dplyr", "ggplot2", "ggpubr", "patchwork", "phyloseq",
+          "vegan", "tibble", "MOFA2", "ggrepel", "pheatmap", "lme4",
+          "lmerTest", "compositions", "MultiAssayExperiment", "Seurat",
+          "reshape2", "apeglm", "magrittr", "DESeq2", "fgsea", "msigdbr",
+          "tidyr", "knitr")
+
+sapply(pkgs, function(p) as.character(packageVersion(p)))
+```
+
+```{r}
+sessionInfo()
 ```
 
 ### Load Data
@@ -143,8 +161,6 @@ sa_linked <- sa_df %>%
   ) %>%
   dplyr::rename(sample_number = `Submitted Name`)
 
-# Check - do all 20 rows have a sample_number?
-print(sa_linked %>% select(sample_short, sample_number, sa_abundance))
 # Check for NAs
 sum(is.na(sa_linked$sample_number)) # should be 0
 ```
@@ -165,14 +181,14 @@ sample_meta$sample_number <- as.character(sample_meta$sample_number)
 sa_linked2 <- sa_linked %>%
   left_join(
     sample_meta %>% 
-      select(sample_number, eg_id, sample_site,
+      dplyr::select(sample_number, eg_id, sample_site,
              lesional, local_EASI_intensity,
              s_aureus_culture_growth_viapath),
     by = "sample_number"
   )
 
 # Check - do all 20 rows have an eg_id?
-print(sa_linked2 %>% select(sample_number, eg_id, 
+print(sa_linked2 %>% dplyr::select(sample_number, eg_id, 
                               sample_site, lesional, 
                               sa_abundance))
 sum(is.na(sa_linked2$eg_id)) # should be 0
@@ -191,7 +207,7 @@ Need to link these for checking for confounders later on (e.g. age/treatment) an
 sa_linked3 <- sa_linked2 %>%
   left_join(
     shotgun_patient %>%
-      select(eg_id, age, sex, EASI,
+      dplyr::select(eg_id, age, sex, EASI,
              weeks_since_last_systemic,
              weeks_since_last_TCS_or_TCI,
              days_since_any_topicals,
@@ -200,7 +216,7 @@ sa_linked3 <- sa_linked2 %>%
   )
 
 # Check
-print(sa_linked3 %>% select(eg_id, sample_site, lesional,
+print(sa_linked3 %>% dplyr::select(eg_id, sample_site, lesional,
                               sa_abundance, age, sex, EASI))
 sum(is.na(sa_linked3$eg_id))
 ```
@@ -242,7 +258,7 @@ master_table <- sa_df %>%
               dplyr::select(sample_number, NMR_sample_id),
             by = "sample_number") %>%
   # Add pathways 
-  left_join(pathways %>% select(-sample),
+  left_join(pathways %>% dplyr::select(-sample),
             by = c("sample_short" = "sample_short"))
 
 # Validation of master table 
@@ -299,7 +315,7 @@ patient_level <- patient_level %>%
     )
   )
 
-print(patient_level %>% select(eg_id, mean_sa, had_systemic))
+print(patient_level %>% dplyr::select(eg_id, mean_sa, had_systemic))
 ```
 
 ### 2.2. SA Confounder Plots
@@ -747,7 +763,7 @@ I will use the median split for the formal PERMANOVA then use continuous SA abun
 ```{r}
 ## METADATA SETUP & SA GROUPING
 physeq_meta <- master_table %>%
-  select(sample_id, eg_id, sample_site, lesional,
+  dplyr::select(sample_id, eg_id, sample_site, lesional,
          sa_abundance, EASI, age, sex,
          weeks_since_last_TCS_or_TCI,
          TEWL_mean, pH_mean) %>%
@@ -2370,201 +2386,6 @@ for (cluster in all_clusters_sa) {
 }
 ```
 
-### 9.3 Visualisation
-
-```{r}
-# Visualisations
-deg_files_sa <- list.files(output_dir_sa,
-                            pattern = "DEG_SA_Results_.*\\.csv",
-                            full.names = TRUE)
- 
-# ---- Build gene recurrence table (shared by both plot loops below) ----
-# Genes significant in many unrelated clusters are more likely to reflect a
-# baseline difference between the 2 "High" patients and the 1 "Low" patient
-# than a genuine, cell-type-specific S. aureus response.
- 
-gene_recurrence <- lapply(deg_files_sa, function(f) {
-  df <- read.csv(f, row.names = 1) %>%
-    filter(!is.na(padj), padj < 0.05, abs(log2FoldChange) > 1)
-  if (nrow(df) == 0) return(NULL)
-  data.frame(gene    = rownames(df),
-             cluster = gsub(".*DEG_SA_Results_|\\.csv", "", basename(f)))
-}) %>% dplyr::bind_rows()
- 
-gene_recurrence_summary <- gene_recurrence %>% dplyr::count(gene, name = "n_clusters", sort = TRUE)
- 
-# Tune this if you want a stricter/looser cutoff for "likely patient effect".
-# This is a heuristic, not a statistical test -- report it as such in methods.
-recurrence_threshold <- 4
- 
-recurring_genes <- gene_recurrence_summary %>%
-  dplyr::filter(n_clusters >= recurrence_threshold) %>%
-  dplyr::pull(gene)
- 
-message(length(recurring_genes), " genes flagged as recurring in >= ",
-        recurrence_threshold, " clusters: ", paste(recurring_genes, collapse = ", "))
- 
-# Quick exploratory views (not required for the figures below, but useful
-# while interpreting results / drafting methods):
-gene_recurrence_summary %>% dplyr::filter(n_clusters >= recurrence_threshold)
-gene_recurrence_summary %>% dplyr::filter(n_clusters == 1)
- 
-# ---- Volcano plot loop: recurring genes flagged, not hidden ----
- 
-volcano_dir_sa <- "~/Desktop/Research_Project/Scripts/DEGs/SA_HighvsLow/Volcano_Plots/"
-if (!dir.exists(volcano_dir_sa)) dir.create(volcano_dir_sa, recursive = TRUE)
- 
-for (file in deg_files_sa) {
- 
-  cluster_name <- gsub(".*DEG_SA_Results_|\\.csv", "", basename(file))
-  message("Plotting: ", cluster_name)
- 
-  res_df <- read.csv(file, row.names = 1) %>%
-    filter(!is.na(padj), !is.na(log2FoldChange)) %>%
-    mutate(
-      gene = rownames(.),
-      sig  = case_when(
-        padj < 0.05 & abs(log2FoldChange) > 1 & gene %in% recurring_genes ~
-          "Recurs across clusters (likely patient effect)",
-        padj < 0.05 & log2FoldChange >  1 ~ "Upregulated in SA High",
-        padj < 0.05 & log2FoldChange < -1 ~ "Upregulated in SA Low",
-        TRUE                               ~ "Not significant"
-      ),
-      label = ifelse(padj < 0.05 & abs(log2FoldChange) > 1, gene, NA)
-    )
- 
-  if (nrow(res_df) < 10) next
- 
-  p <- ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) +
-    geom_point(aes(colour = sig), size = 1.5, alpha = 0.7) +
-    geom_text_repel(
-      aes(label = label),
-      size                = 5,
-      max.overlaps        = Inf,
-      box.padding         = 0.5,
-      point.padding       = 0.3,
-      segment.size        = 0.3,
-      segment.alpha       = 0.5,
-      min.segment.length  = 0.2,
-      force               = 2,
-      seed                = 42
-    ) +
-    geom_vline(xintercept = c(-1, 1), linetype = "dashed", colour = "grey40") +
-    geom_hline(yintercept = -log10(0.05), linetype = "dashed", colour = "grey40") +
-    scale_colour_manual(values = c(
-      "Upregulated in SA High"                          = "#e41a1c",
-      "Upregulated in SA Low"                            = "royalblue",
-      "Recurs across clusters (likely patient effect)"   = "darkorange",
-      "Not significant"                                  = "grey60"
-    )) +
-    scale_x_continuous(limits = c(-5, 5)) +
-    scale_y_continuous(limits = c(0, 5)) +
-    labs(
-      title    = paste("SA High vs SA Low:", gsub("_", " ", cluster_name)),
-      subtitle = "Patient-level comparison (n=2 High vs n=1 Low) -- exploratory",
-      x        = "log2 Fold Change",
-      y        = "-log10(adjusted p-value)",
-      colour   = NULL
-    ) +
-    theme_bw() +
-    theme(
-      panel.grid       = element_blank(),
-      legend.position  = "top",
-      legend.direction = "vertical",
-      plot.title       = element_text(size = 18, face = "bold"),
-      plot.subtitle    = element_text(size = 14),
-      axis.title       = element_text(size = 16),
-      axis.text        = element_text(size = 14),
-      legend.text      = element_text(size = 14)
-    )
- 
-  ggsave(filename = paste0(volcano_dir_sa, "Volcano_SA_", cluster_name, ".png"),
-         plot   = p,
-         width  = 10,
-         height = 9,
-         dpi    = 300)
-}
- 
-# ---- Dot plots: recurring genes excluded, not just flagged ----
- 
-adata_sa <- NormalizeData(adata_sa, normalization.method = "LogNormalize", scale.factor = 10000)
-adata_sa$cluster_SA <- paste0(adata_sa$clusters, "_", adata_sa$SA_status)
- 
-plot_dir_sa <- "~/Desktop/Research_Project/Scripts/DEGs/SA_HighvsLow/DotPlots/"
-if (!dir.exists(plot_dir_sa)) dir.create(plot_dir_sa, recursive = TRUE)
- 
-all_sig_genes <- c()
-for (file in deg_files_sa) {
-  res_df <- read.csv(file, row.names = 1) %>%
-    filter(!is.na(padj), !is.na(log2FoldChange), padj < 0.05, abs(log2FoldChange) > 1)
-  all_sig_genes <- c(all_sig_genes, rownames(res_df))
-}
-all_sig_genes <- setdiff(unique(all_sig_genes), recurring_genes)
-all_sig_genes <- intersect(all_sig_genes, rownames(adata_sa))
-adata_sa <- ScaleData(adata_sa, features = all_sig_genes)
- 
-for (file in deg_files_sa) {
- 
-  cluster_name <- gsub(".*DEG_SA_Results_|\\.csv", "", basename(file))
-  message("Plotting dotplot for: ", cluster_name)
- 
-  res_df <- read.csv(file, row.names = 1) %>%
-    filter(!is.na(padj), !is.na(log2FoldChange), padj < 0.05, abs(log2FoldChange) > 1) %>%
-    tibble::rownames_to_column("gene") %>%
-    filter(!gene %in% recurring_genes) %>%
-    arrange(padj)
- 
-  if (nrow(res_df) == 0) {
-    message("Skipping ", cluster_name, ": no cluster-specific DEGs (after removing recurring genes).")
-    next
-  }
- 
-  sig_genes   <- head(res_df$gene, 20)
-  valid_genes <- intersect(sig_genes, rownames(adata_sa))
- 
-  if (length(valid_genes) == 0) {
-    message("Skipping ", cluster_name, ": no DEGs found in Seurat object.")
-    next
-  }
- 
-  p <- DotPlot(adata_sa,
-               features = valid_genes,
-               group.by = "cluster_SA",
-               cols     = c("blue", "red"),
-               scale    = TRUE,
-               col.min  = -1.5,
-               col.max  =  1.5) +
-    RotatedAxis() +
-    theme_bw() +
-    theme(
-      axis.text.x      = element_text(size = 16, face = "bold", vjust = 1, hjust = 1),
-      axis.text.y      = element_text(size = 16, face = "bold"),
-      axis.title.x     = element_text(size = 18, face = "bold"),
-      axis.title.y     = element_text(size = 18, face = "bold"),
-      legend.text      = element_text(size = 14),
-      legend.title     = element_text(size = 16, face = "bold"),
-      plot.title       = element_text(size = 20, face = "bold", hjust = 0.5),
-      plot.subtitle    = element_text(size = 16, hjust = 0.5),
-      panel.grid.major = element_line(color = "grey95"),
-      panel.grid.minor = element_blank()
-    ) +
-    labs(title    = paste("Cluster-specific DEGs:", gsub("_", " ", cluster_name)),
-         subtitle = paste0("S. aureus High (>35) vs Low (<10) | n=", length(valid_genes),
-                            " genes (genes recurring in >=", recurrence_threshold,
-                            " clusters excluded)"),
-         colour   = "Relative Exp.",
-         size     = "% Expressed",
-         x        = "Significant DEGs",
-         y        = "Cell Type & SA Status")
- 
-  ggsave(filename = paste0(plot_dir_sa, "DotPlot_SA_DEGs_", cluster_name, ".png"),
-         plot = p, width = 14, height = 11, dpi = 300)
- 
-  message("Saved dotplot for: ", cluster_name)
-}
- 
-```
-
 ### 9.4 Validation of DEg Count and Cluster Size
 
 ```{r}
@@ -2602,33 +2423,6 @@ deg_files_sa <- list.files(output_dir_sa,
                             pattern = "DEG_SA_Results_.*\\.csv",
                             full.names = TRUE)
 
-# ============================================================
-# BUILD GENE RECURRENCE TABLE (shared by both plot loops below)
-# ============================================================
-# Genes significant in many unrelated clusters are more likely to reflect a
-# baseline difference between the 2 "High" patients and the 1 "Low" patient
-# than a genuine, cell-type-specific S. aureus response. We flag those here
-# rather than treating every "significant" gene as equally trustworthy.
-
-gene_recurrence <- lapply(deg_files_sa, function(f) {
-  df <- read.csv(f, row.names = 1) %>%
-    filter(!is.na(padj), padj < 0.05, abs(log2FoldChange) > 1)
-  if (nrow(df) == 0) return(NULL)
-  data.frame(gene    = rownames(df),
-             cluster = gsub(".*DEG_SA_Results_|\\.csv", "", basename(f)))
-}) %>% dplyr::bind_rows()
-
-gene_recurrence_summary <- gene_recurrence %>% dplyr::count(gene, name = "n_clusters")
-
-# Tune this if you want a stricter/looser cutoff for "likely patient effect"
-recurrence_threshold <- 4
-
-recurring_genes <- gene_recurrence_summary %>%
-  dplyr::filter(n_clusters >= recurrence_threshold) %>%
-  dplyr::pull(gene)
-
-message(length(recurring_genes), " genes flagged as recurring in >= ",
-        recurrence_threshold, " clusters: ", paste(recurring_genes, collapse = ", "))
 
 # ============================================================
 # VOLCANO PLOT LOOP - SA HIGH vs LOW
@@ -2649,8 +2443,6 @@ for (file in deg_files_sa) {
     mutate(
       gene = rownames(.),
       sig  = case_when(
-        padj < 0.05 & abs(log2FoldChange) > 1 & gene %in% recurring_genes ~
-          "Recurs across clusters (likely patient effect)",
         padj < 0.05 & log2FoldChange >  1 ~ "Upregulated in SA High",
         padj < 0.05 & log2FoldChange < -1 ~ "Upregulated in SA Low",
         TRUE                               ~ "Not significant"
@@ -2679,14 +2471,12 @@ for (file in deg_files_sa) {
     scale_colour_manual(values = c(
       "Upregulated in SA High"                          = "#e41a1c",
       "Upregulated in SA Low"                            = "royalblue",
-      "Recurs across clusters (likely patient effect)"   = "darkorange",
       "Not significant"                                  = "grey60"
     )) +
     scale_x_continuous(limits = c(-5, 5)) +
     scale_y_continuous(limits = c(0, 5)) +
     labs(
-      title    = paste("SA High vs SA Low:", gsub("_", " ", cluster_name)),
-      subtitle = "Patient-level comparison (n=2 High vs n=1 Low) -- exploratory",
+      title    = paste("SA High (>35) vs SA Low (<10):", gsub("_", " ", cluster_name)),
       x        = "log2 Fold Change",
       y        = "-log10(adjusted p-value)",
       colour   = NULL
@@ -2934,9 +2724,6 @@ for (file in deg_files_sa) {
 
 
 
-
-
-
 col_meta <- data.frame(ColName = colnames(mat_sa)) %>%
   separate(ColName, 
            into = c("Cluster", "Patient", "SA_group"), 
@@ -2955,6 +2742,24 @@ kable(sample_counts, caption = "Pseudobulk samples per cluster by SA status")
 write.csv(sample_counts,
           "~/Desktop/Research_Project/Scripts/DEGs/SA_HighvsLow/Pseudobulk_Sample_Counts.csv",
           row.names = FALSE)
+```
+
+```{r}
+# Pathway recurrence diagnostic
+gsea_files <- list.files(gsea_base_dir_sa,
+                          pattern = "GSEA_SA_Significant_Pathways_.*\\.csv",
+                          recursive = TRUE, full.names = TRUE)
+
+pathway_recurrence <- lapply(gsea_files, function(f) {
+  df <- read.csv(f)
+  if (nrow(df) == 0) return(NULL)
+  data.frame(pathway = df$pathway,
+             cluster = gsub(".*GSEA_SA_Significant_Pathways_|\\.csv", "", basename(f)))
+}) %>% dplyr::bind_rows()
+
+pathway_recurrence_summary <- pathway_recurrence %>% dplyr::count(pathway, name = "n_clusters", sort = TRUE)
+print(pathway_recurrence_summary)
+
 ```
 
 ## Step 10: LIANA+ Cell Communication
