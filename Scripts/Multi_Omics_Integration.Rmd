@@ -40,6 +40,8 @@ library(SeuratDisk)
 ### Load Data
 
 ```{r}
+# NOTE: paths below are local to the original analysis machine; update before re-running elsewhere.
+
 ###### Microbiome Data 
 # Species-level abundance table 
 microbiome <- read.csv(
@@ -89,7 +91,7 @@ Row 13 was incorrectly assigned. Sample 97.BACK.LES appeared as a duplicate in s
 Drop row 13
 
 ```{r}
-# Remove GYECZ1193 BACK - no NMR data available, incorrectly linked to GYECZ1197
+# Remove GYECZ1193 BACK (sample 29) - no NMR data available, incorrectly linked to GYECZ1197 
 nmr_shotgun <- nmr_shotgun[nmr_shotgun$sample_number != "29", ]
 
 # Remove _S1, _S2, etc. suffixes from pathway IDs
@@ -233,14 +235,14 @@ master_table <- sa_df %>%
   # Add pathways 
   left_join(pathways %>% dplyr::select(-sample),
             by = c("sample_short" = "sample_short"))
-
-# Validation of master table 
+  
+# Validation of master table
 master_table
-dim(master_table)                          
-length(unique(master_table$eg_id))         
-table(master_table$lesional)               
-summary(master_table$sa_abundance)         
-colSums(is.na(master_table))   
+dim(master_table) # row/column count -- expect one row per sample
+length(unique(master_table$eg_id))# number of unique patients represented
+table(master_table$lesional)  # lesional vs non-lesional sample counts
+summary(master_table$sa_abundance) # check SA abundance range
+colSums(is.na(master_table))   # flag any columns with unexpected missing values
 
 ```
 
@@ -531,14 +533,19 @@ pathway_screening <- lapply(confounders, function(var) {
 pathway_complete <- meta_matched_clean[complete.cases(meta_matched_clean[, c("sa_abundance", "pH_mean")]), ]
 pw_dist_complete <- vegdist(pathway_matched_clean[rownames(pathway_complete), ], method = "bray")
 
-set.seed(123)
+set.seed(123) # fixes the random permutation order in adonis2 so p-values are
+# reproducible 
 
 # 'by = margin' assesses the unique contribution of SA after accounting for pH
 pathway_primary_model <- adonis2(pw_dist_complete ~ pH_mean + sa_abundance, 
                                  data = pathway_complete, 
                                  permutations = 999, 
                                  by = "margin",
-                                 strata = pathway_complete$eg_id)
+                                 strata = pathway_complete$eg_id) 
+# strata = eg_id restricts permutations to within
+# each patient's samples, accounting for the fact
+# that lesional/non-lesional pairs from the same
+ # patient aren't independent observations
 
 cat("\n--- Pathway Primary Model (Adjusted for pH) ---\n")
 print(pathway_primary_model)
@@ -1019,7 +1026,12 @@ plot_betadisper_biplot <- function(bd_obj, meta, title, bd_p, permanova_r2,
     )
 }
  
-# PCoA biplot with pH fitted as an envfit vector 
+# PCoA biplot with pH fitted as an envfit vector - envfit() tests whether a
+# continuous variable (pH) correlates with the ordination axes and, if so,
+# draws it as a directional arrow: arrow direction shows which way pH
+# increases across the PCoA plot, arrow length/R² shows how strongly it
+# aligns with the observed sample spread.
+
 plot_ph_envfit <- function(bd_obj, meta, title, permanova_r2, seed = SEED) {
  
   scores_df <- as.data.frame(scores(bd_obj, display = "sites"))
@@ -1041,7 +1053,8 @@ plot_ph_envfit <- function(bd_obj, meta, title, permanova_r2, seed = SEED) {
     na.rm = TRUE
   )
  
-  arrow_scale  <- 0.4
+  arrow_scale  <- 0.4 # shortens the fitted vector for display so it fits
+# within the plot's point cloud 
   ef_scores    <- as.data.frame(scores(ef, display = "vectors"))
   ef_scores$r2 <- ef$vectors$r
   ef_scores$p  <- ef$vectors$pvals
@@ -1293,7 +1306,7 @@ ggsave(file.path(results_dir, "metabolite_richness_combined.png"),
 omics_layers <- list(
   microbiome = microbiome_results,
   pathway    = pathway_results
-  #metabolite = metabolite_results
+
 )
  
 biplots_sa <- list()
@@ -1388,12 +1401,6 @@ writeLines(capture.output(sessionInfo()),
  
 cat("Analysis complete. All results, plots, and session info\n")
 cat("saved to:", results_dir, "\n")
-
-writeLines(capture.output(sessionInfo()),
-           con = file.path(results_dir, "session_info.txt"))
- 
-cat("Analysis complete. All results, plots, and session info\n")
-cat("saved to:", results_dir, "\n")
 ```
 
 ## Step 4: Linear **Regressions - Identifying SA High/Low Associated Features**
@@ -1455,8 +1462,13 @@ get_stars <- function(p) {
 
 ```{r}
 ##Regression functions 
- 
-# SA ~ feature, adjusting for lesional status and pH
+
+# SA ~ feature, adjusting for lesional status and pH.
+# Loops feature-by-feature (metabolite or pathway) rather than vectorising,
+# since each feature needs its own na.omit() and its own check for whether
+# both SA groups are represented - vectorising would silently drop features
+# with partial missingness instead of skipping them explicitly.
+
 run_omics_regression <- function(data_matrix, master_df, predictor_col = "SA_status") {
  
   results_list <- list()
@@ -1473,7 +1485,10 @@ run_omics_regression <- function(data_matrix, master_df, predictor_col = "SA_sta
       pH       = as.numeric(as.character(master_sub$pH[idx]))
     )
     df_temp <- na.omit(df_temp)
- 
+ # Skip features where NA-dropping left too few samples, or where only
+# one SA group remains - lm() would either fail or fit a meaningless
+ # single-group model in either case
+    
     if (length(unique(df_temp$SA_group)) < 2 || nrow(df_temp) < 5) next
  
     model <- tryCatch({
@@ -1495,6 +1510,9 @@ run_omics_regression <- function(data_matrix, master_df, predictor_col = "SA_sta
   final_df            <- do.call(rbind, results_list)
   colnames(final_df)  <- c("Estimate", "Std_Error", "t_value", "p_value", "feature")
   final_df$p_adjusted <- p.adjust(final_df$p_value, method = "fdr")
+ # across all features tested in this call, as
+ # described in the Step 4 rationale above
+ 
   return(final_df)
 }
  
@@ -1522,7 +1540,12 @@ run_spearman_check <- function(data_matrix, master_df, predictor_col = "sa_abund
   return(do.call(rbind, results_list))
 }
  
-# Pathway -> Metabolite regression: metabolite ~ pathway + lesional + pH
+# Pathway -> Metabolite regression: metabolite ~ pathway + lesional + pH.
+# Nested loop over every (pathway x metabolite) pair - O(248 x 38) ~= 9,400
+# individual regressions. This is intentionally exhaustive/uncorrected at
+# this stage; FDR correction and Spearman validation (4.3) are applied
+# afterward to filter down to robust hits.
+
 run_pathway_metabolite_regression <- function(nmr_matrix, pathway_matrix, master_df) {
  
   results_list <- list()
@@ -2017,7 +2040,7 @@ ggsave(paste0(OUT_DIR, "Pathway_Metabolite_Top20.png"), pair_plot, width = 18, h
  
 ```
 
-## Step 6: Mediation Analysis
+## Step 5: Mediation Analysis
 
 So step 5 shows that certain metabolites/pathways are correlated with S. aureus level. This mediation analysis will see if those metabolites/pathways are actually used by SA to drive skin lesionality.
 
@@ -2061,6 +2084,12 @@ mediation_summary_list <- list()
 # Get the list of significant metabolites 
 target_metabolites <- metabolite_hits$feature 
 
+# Runs a single mediation model: SA abundance (treat) -> feature (mediator) -> lesional status (outcome).
+#   model.m: linear model of mediator ~ treat + covariate  (the "a path")
+#   model.y: logistic model of outcome ~ mediator + treat + covariate (the "b"/"c'" paths)
+# mediation::mediate() then combines these to estimate the indirect (ACME) and
+# direct (ADE) effects, with percentile bootstrap CIs (sims replications)
+# rather than normal-theory CIs, which are more robust given the small sample size here.
 
 run_sa_mediation_stable <- function(feature, data, is_pathway = FALSE,
                                      treat_col = "sa_abundance",
@@ -2077,7 +2106,10 @@ run_sa_mediation_stable <- function(feature, data, is_pathway = FALSE,
     covariate = as.numeric(as.character(data[[covariate_col]]))
   )
 
-
+# Binarise outcome: 1 = lesional, 0 = non-lesional. Matches on "LES"/"LESIONAL"
+  # (case-insensitive) so it's robust to whichever label format the lesional
+  # column happens to use upstream.
+  
   df$outcome <- ifelse(toupper(as.character(df$outcome)) %in% c("LES", "LESIONAL"), 1, 0)
 
   
@@ -2180,7 +2212,7 @@ mediation_pathway_list <- list()
 
 top_path_df <- head(pathway_hits[order(pathway_hits$p_value), ], 15)
 
-# Get the top 5 pathways (already sorted by p-value )
+# Get the top 15 pathways (already sorted by p-value )
 target_pathways <- head(top_path_df$feature, 15)
 
 print(paste("Starting mediation for", length(target_pathways), "pathways..."))
@@ -2282,7 +2314,7 @@ print(table(adata_qc$sample, adata_qc$les))
 
 ```
 
-## Step 5: DEG for SA High vs Low
+## Step 6: DEG for SA High vs Low
 
 Differential expression analysis comparing High vs Low SA groups.
 
@@ -2292,7 +2324,7 @@ Differential expression analysis comparing High vs Low SA groups.
 | GYECZ1193 | A21 (les) | A22 (non_les) | 89.3 / 57.3 | High |
 | GYECZ1197 | A38 (les) | A37 (non_les) | 0.0 / 2.5 | Low |
 
-### 5.1 Build SA Status & Bridge to scRNA Samples
+### 6.1 Build SA Status & Bridge to scRNA Samples
 
 ```{r}
 master_table <- master_table %>%
@@ -2346,7 +2378,7 @@ table(adata_sa$sample, adata_sa$true_patient, useNA = "always")
  
 ```
 
-### 5.2 Pseudobulk & Differential Expression Analysis
+### 6.2 Pseudobulk & Differential Expression Analysis
 
 ```{r}
 # PATIENT-LEVEL PSEUDOBULK
@@ -2417,7 +2449,7 @@ for (cluster in all_clusters_sa) {
 }
 ```
 
-### 5.4 Validation of DEg Count and Cluster Size
+### 6.4 Validation of DEg Count and Cluster Size
 
 ```{r}
 # DEG COUNT vs CLUSTER SIZE DIAGNOSTIC
@@ -2608,7 +2640,7 @@ for (file in deg_files_sa) {
 }
 ```
 
-### 5.5. GSEA
+### 6.5. GSEA
 
 ```{r}
 
@@ -2644,11 +2676,17 @@ for (file in deg_files_sa) {
   set.seed(123)
   gene_ranks <- gene_ranks + rnorm(length(gene_ranks), mean = 0, sd = 1e-10)
   gene_ranks <- sort(gene_ranks, decreasing = TRUE)
-  
+  # fgsea requires a strictly unique ranking - tied log2FoldChange values
+# (common with small sample sizes) would otherwise cause fgsea() to warn
+# or behave unpredictably. Adding negligible random noise (sd=1e-10, far
+# below any real fold-change) breaks ties without meaningfully altering
+# the ranking.
+
   fgsea_res <- fgsea(pathways = pathways_h,
                      stats    = gene_ranks,
-                     minSize  = 15,
-                     maxSize  = 500)
+                     minSize  = 15, # exclude gene sets with <15 genes - too small
+# to give a stable enrichment score
+                     maxSize  = 500) # exclude very large, non-specific gene sets
   
   sig_pathways <- fgsea_res[fgsea_res$padj < 0.05, ]
   sig_pathways <- sig_pathways[order(sig_pathways$NES, decreasing = TRUE), ]
@@ -2765,7 +2803,10 @@ write.csv(sample_counts,
 ```
 
 ```{r}
-# Pathway recurrence diagnostic
+# Pathway recurrence diagnostic - counts how many clusters each significant
+# Hallmark pathway shows up in, to flag pathways that may reflect a broad
+# patient-level SA effect rather than something specific to one cell type
+
 gsea_files <- list.files(gsea_base_dir_sa,
                           pattern = "GSEA_SA_Significant_Pathways_.*\\.csv",
                           recursive = TRUE, full.names = TRUE)
@@ -2823,6 +2864,10 @@ cat("Low SA range:", round(min(mean_expr_low_sa), 3),
 
 # --- Save ---
 out_dir <- "~/Desktop/Research_Project/Scripts/Integration/GEM/pyglpk/Data"
+# NOTE: destination folder name references "pyglpk" but the downstream GEM
+# pipeline actually loads this via GEM_Data_Loading.ipynb / COBRApy+HiGHS,
+# not the pyglpk package 
+
 
 write.csv(mean_expr_per_celltype, file.path(out_dir, "mean_expr_per_celltype.csv"))
 write.csv(mean_expr_high_sa,      file.path(out_dir, "mean_expr_high_sa.csv"))
