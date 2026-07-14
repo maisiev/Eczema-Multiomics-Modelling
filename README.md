@@ -79,7 +79,7 @@ loaded from Google Drive.
 ## Data
 
 Raw data files are not tracked in this repository (patient metadata, sequencing/metabolomics
-data, and the single-cell RNA-seq object are kept outside version control). Scripts currently
+data and the single-cell RNA-seq object are kept outside version control). Scripts 
 reference local absolute paths - see the individual READMEs for the expected file names/formats
 and where to update paths before re-running.
 
@@ -88,5 +88,5 @@ and where to update paths before re-running.
 This is a small-cohort exploratory study (18 samples with all three omics modalities across
 patients; 6 single-cell samples from 3 patients), so several analyses, particularly the
 single-cell differential expression and any patient-level comparisons, should be read as
-hypothesis-generating rather than confirmatory. Sample-size and confounding caveats specific to
+hypothesis-generating. Sample-size and confounding caveats specific to
 each stage are noted in the relevant sub-README.
